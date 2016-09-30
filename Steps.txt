@@ -1,0 +1,40 @@
+---- Steps ----
+1. Construct a representation of the board
+2. Write a script that returns all possible moves in vector space - Possible Move Generator (PMG)
+3. Write a neural network in TensorFlow that evaluates each move and returns a score from [-1, +1]
+4. Write a script that takes the board representation and passes it to the PMG, passes all of the moves through the NN,
+    chooses the best move and passes it back to the board representation, doing this for n moves
+5. Train the NN!
+
+---- Step specs ----
+1. Board representation:
+  - 8x8 board with a maximum of 16 pieces
+  - Be able to take as input a move by one of the players and update the board state
+  - Pieces should be captured and removed when appropriate
+  - Capability to return some statement of winning/losing either by all pieces being eliminated or 
+    whoever has the most pieces
+  - Should store every move for a game from each player
+2. Possible moves in vector space:
+  - Each spot on the board is represented by (1,0), (0,0), or (0,1)
+  - (1,0) represents that your player is present on that spot
+  - (0,0) represents that no player is present on a spot
+  - (0,1) represents that an opponents player is on a spot
+  - A single move is represented by a 64x4 matrix where the first two columns are the 
+    current state of the board and the next two are the state of the board after a move.
+3. What the neural network does:
+  - The neural network should take the 64x4 matrix that represents a move as input
+  - Should output a score from [-1, +1]
+4. Game playing script
+  - Passing board state to PMG should take the 64x2 matrix of the board state and pass it to the PMG
+  - PMG then returns all possible moves to the NN
+  - NN does a foreward pass on each move and passes the maximum value back to the board state (storing each value for later?)
+  - Loop over above three steps for n moves
+5. Training the NN to play
+  - After a completed game, every move that contributed to the winning side is assigned a response value of +1 and the
+    losing side is assigned a value of -1
+  
+  
+  
+  
+  
+  

@@ -30,8 +30,8 @@
   - NN does a foreward pass on each move and passes the maximum value back to the board state (storing each value for later?)
   - Loop over above three steps for n moves
 5. Training the NN to play
-  - After a completed game, every move that contributed to the winning side is assigned a response value of +1 and the
-    losing side is assigned a value of -1
+  - After a completed game (n number of moves), every move that contributed to the winning side is assigned a response value     of +1 and the losing side is assigned a value of -1
+  - Update the NN by comparing the output score to the +1 or -1 value assigned to it.
   
   
   

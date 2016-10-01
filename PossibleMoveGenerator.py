@@ -10,7 +10,7 @@ current state of the board and the next two are the state of the board after a m
 class PossibleMoveGenerator():
 
     def __init__(self):
-
+        pass
 
     def generateMoves(self, gameBoard, side):
         possibleMoves = []

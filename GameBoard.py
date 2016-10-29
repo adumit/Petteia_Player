@@ -71,9 +71,11 @@ class GameBoard:
                 return potential_capture
         return []
 
-    def generate_moves(self, side):
+    def generate_moves(self):
+        """Generate_moves always generates them from the positive side.
+        The network will have a board for each team"""
         possible_moves = []
-        for piece in side:
+        for piece in self.pos:
             if piece is None:
                 continue
             # For moving forward
@@ -113,14 +115,14 @@ class GameBoard:
     def to_matrix(self, update_move):
         new_grid, new_pos, new_neg = self.deepcopy_board()
         grid_after_move, updated_pos, updated_neg = self.update_board(new_grid, new_pos, new_neg, update_move)
-        nn_input = np.zeros(shape=(8,8,4))
+        board_matrix = np.zeros(shape=(8,8,4))
         # Numpy indexing expects a list for each dimension. We pass in rows indices by going over the tuples in pos and column
         # indices by doing the same. We know the third dimension we expect.
-        nn_input[[x[0] for x in self.pos], [x[1] for x in self.pos], 0] = 1.0
-        nn_input[[x[0] for x in self.neg], [x[1] for x in self.neg], 1] = 1.0
-        nn_input[[x[0] for x in updated_pos], [x[1] for x in updated_pos], 2] = 1.0
-        nn_input[[x[0] for x in updated_neg], [x[1] for x in updated_neg], 3] = 1.0
-        return nn_input
+        board_matrix[[x[0] for x in self.pos], [x[1] for x in self.pos], 0] = 1.0
+        board_matrix[[x[0] for x in self.neg], [x[1] for x in self.neg], 1] = 1.0
+        board_matrix[[x[0] for x in updated_pos], [x[1] for x in updated_pos], 2] = 1.0
+        board_matrix[[x[0] for x in updated_neg], [x[1] for x in updated_neg], 3] = 1.0
+        return board_matrix
 
 
     def print_board(self):

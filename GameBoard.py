@@ -9,7 +9,7 @@ whoever has the most pieces
 import numpy as np
 
 class GameBoard:
-    #TODO Fix indexing
+    #TODO REMOVE indexing!
 
     def __init__(self):
         self.grid = [[0 for i in range(8)] for j in range(8)]
@@ -20,7 +20,7 @@ class GameBoard:
             self.grid[7][index] = index + 1 # subtracting one so that piece values don't drop to zero
 
     def make_move(self, update_move):
-        new_board, new_pos, new_neg = update_move(self.grid, self.pos, self.neg, update_move)
+        new_board, new_pos, new_neg = self.update_board(self.grid, self.pos, self.neg, update_move)
         self.grid = new_board
         self.pos = new_pos
         self.neg = new_neg
@@ -125,10 +125,10 @@ class GameBoard:
         board_matrix = np.zeros(shape=(8,8,4))
         # Numpy indexing expects a list for each dimension. We pass in rows indices by going over the tuples in pos and column
         # indices by doing the same. We know the third dimension we expect.
-        board_matrix[[x[0] for x in self.pos], [x[1] for x in self.pos], 0] = 1.0
-        board_matrix[[x[0] for x in self.neg], [x[1] for x in self.neg], 1] = 1.0
-        board_matrix[[x[0] for x in updated_pos], [x[1] for x in updated_pos], 2] = 1.0
-        board_matrix[[x[0] for x in updated_neg], [x[1] for x in updated_neg], 3] = 1.0
+        board_matrix[[x[0] for x in self.pos if x], [x[1] for x in self.pos if x], 0] = 1.0
+        board_matrix[[x[0] for x in self.neg if x], [x[1] for x in self.neg if x], 1] = 1.0
+        board_matrix[[x[0] for x in updated_pos if x], [x[1] for x in updated_pos if x], 2] = 1.0
+        board_matrix[[x[0] for x in updated_neg if x], [x[1] for x in updated_neg if x], 3] = 1.0
         return board_matrix
 
 

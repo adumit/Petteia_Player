@@ -1,5 +1,7 @@
 import GameBoard as gb
 import numpy as np
+import math
+from random import random
 
 """
 - The neural network should take the 64x4 matrix that represents a move as input
@@ -24,8 +26,8 @@ def max_pool3d_2x2(x, ksize, strides):
 
 # ------------------- Network Definition -------------------
 
-x = tf.placeholder(tf.float32, shape=[None, 256])
-y_ = tf.placeholder(tf.float32, shape=[None, 1])
+x = tf.placeholder(tf.float32, shape=[8, 8, 4])
+y_ = tf.placeholder(tf.float32, shape=[1])
 
 x_image = tf.reshape(x, [-1, 4, 8, 8, 1])
 
@@ -43,9 +45,9 @@ h_pool2 = max_pool3d_2x2(h_conv1, ksize=[1, 1, 2, 2, 1], strides=[1, 1, 2, 2, 1]
 
 
 # densely connected layer
-W_fc1 = weight_variable([7 * 7 * 64, 1024], 'W_fc1')
+W_fc1 = weight_variable([512, 1024], 'W_fc1')
 b_fc1 = bias_variable([1024])
-h_pool2_flat = tf.reshape(h_pool2, [-1, 7 * 7 * 64])
+h_pool2_flat = tf.reshape(h_pool2, [-1, 512])
 h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
 # softmax for classifying as good move or bad move
@@ -69,30 +71,84 @@ saver = tf.train.Saver()
 # Where x: is the input game boards and y is the labels for each
 
 
-def main():
+if __name__ == "__main__":
     nn_saver_dir = '/nn_checkpoints'
 
-    with tf.Session() as sesh:
-        sesh.run(init_op)
+    should_restore = False
 
-        # saver.restore(sesh, '/nn_checkpoints/MODELGOESHERE.ckpt'
-        # print("Model restored")
+    with tf.Session() as sesh:
+
+        if should_restore:
+            saver.restore(sesh, '/nn_checkpoints/MODELGOESHERE.ckpt')
+            print("Model restored")
+        else:
+            sesh.run(init_op)
 
         games_played = 0
         while(True):
             # ----- Play a game of Petteia -----
             # Generate gameboards, one for each side
+            moves_made_red = []
+            # moves_made_black = []
             gameboardRed = gb.GameBoard()
-            gameBoardBlack = gb.GameBoard()
-            for iter in range(200):
-                # Make a red move
+            gameboardBlack = gb.GameBoard()
+            for iter in range(100):
+                # Make a move for red
                 possible_moves = gameboardRed.generate_moves()
                 move_scores = []
                 for i in range(len(possible_moves)):
-                    matrix_board = gameboardRed.to_matrix(possible_moves[i])
+                    try:
+                        matrix_board = gameboardRed.to_matrix(possible_moves[i])
+                    except TypeError:
+                        print(possible_moves[i])
+                        print(gameboardRed.print_board())
+                        break
                     move_scores.append(sesh.run(y_conv, feed_dict={x: matrix_board}))
-                gameboardRed.make_move(possible_moves[np.argmax(move_scores)])
-                gameBoardBlack.make_move(possible_moves[np.argmax(move_scores)])
+                # With the best move found, move on both red and black boards
+                best_move = possible_moves[np.argmax(move_scores)]
+                moves_made_red.append(gameboardRed.to_matrix(best_move))
+                gameboardRed.make_move(best_move)
+                move_for_black = ((7 - best_move[0][0], 7 - best_move[0][1]), (7 - best_move[1][0], 7 - best_move[1][1]))
+                gameboardBlack.make_move(move_for_black)
+
+                # Make a move for black
+                possible_moves = gameboardBlack.generate_moves()
+                move_scores = []
+                for i in range(len(possible_moves)):
+                    matrix_board = gameboardBlack.to_matrix(possible_moves[i])
+                    move_scores.append(sesh.run(y_conv, feed_dict={x: matrix_board}))
+                # With the best move found, move on both red and black boards
+                best_move = possible_moves[np.argmax(move_scores)]
+                # moves_made_black.append(gameboardBlack.to_matrix(best_move))
+                gameboardBlack.make_move(best_move)
+                move_for_red = ((7 - best_move[0][0], 7 - best_move[0][1]), (7 - best_move[1][0], 7 - best_move[1][1]))
+                gameboardRed.make_move(move_for_red)
+
+            # Print out for debugging
+            print("RED SIDE BOARD")
+            gameboardRed.print_board()
+
+            # Evaluate the board,
+            # Winning outright should be worth a lot
+            # Winning should be scaled by the number of pieces a side won by
+            # The effect should not be linear, use diff^1.5
+            # If the sides tied, still adjust the weights slightly
+            num_red = len([x for x in gameboardRed.pos if x])
+            num_black = len([x for x in gameboardRed.neg if x])
+            if num_red > num_black:
+                red_score = math.pow((num_red - num_black), 1.5)
+            elif num_black > num_red:
+                red_score = -math.pow((num_black - num_red), 1.5)
+            else: # TIED, slightly change weights
+                red_score = random() - .5 # random() generates numbers on (0,1) subtract 0.5 to get to (-.5, .5)
+            # Reward for winning a game entirely
+            if num_red == 0:
+                red_score -= 5
+            elif num_black == 0:
+                red_score +=5
+
+            for move in moves_made_red:
+                train_step.run(feed_dict={x: move, y_: np.array([red_score])})
 
 
 

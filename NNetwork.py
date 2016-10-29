@@ -91,7 +91,8 @@ def main():
                 for i in range(len(possible_moves)):
                     matrix_board = gameboardRed.to_matrix(possible_moves[i])
                     move_scores.append(sesh.run(y_conv, feed_dict={x: matrix_board}))
-                gameboardRed.u
+                gameboardRed.make_move(possible_moves[np.argmax(move_scores)])
+                gameBoardBlack.make_move(possible_moves[np.argmax(move_scores)])
 
 
 

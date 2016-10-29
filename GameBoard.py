@@ -19,25 +19,32 @@ class GameBoard:
             self.grid[0][index] = -index - 1 # adding one so that piece values don't drop to zero
             self.grid[7][index] = index + 1 # subtracting one so that piece values don't drop to zero
 
-    def update_board(self, board, pos, neg, update_move):
-        piece_val = board[update_move[0][0]][update_move[0][1]]
-        board[update_move[0][0]][update_move[0][1]] = 0
-        board[update_move[1][0]][update_move[1][1]] = piece_val
+    def make_move(self, update_move):
+        new_board, new_pos, new_neg = update_move(self.grid, self.pos, self.neg, update_move)
+        self.grid = new_board
+        self.pos = new_pos
+        self.neg = new_neg
+
+    def update_board(self, game_grid, pos, neg, update_move):
+        # TODO this should NOT modify the board that is passed in, but it currently does
+        piece_val = game_grid[update_move[0][0]][update_move[0][1]]
+        game_grid[update_move[0][0]][update_move[0][1]] = 0
+        game_grid[update_move[1][0]][update_move[1][1]] = piece_val
         if piece_val > 0:
             pos[piece_val - 1] = update_move[1]
-            for capped in self.find_captures(board, update_move[1], 1):
+            for capped in self.find_captures(game_grid, update_move[1], 1):
                 # The value returned by find captures will be the negative index within the enemy teams list
                 cap_location = neg[-1*capped - 1]
-                board[cap_location[0]][cap_location[1]] = 0
+                game_grid[cap_location[0]][cap_location[1]] = 0
                 neg[-1*capped - 1] = None
         else:
             neg[-piece_val - 1] = update_move[1]
-            for capped in self.find_captures(board, update_move[1], -1):
+            for capped in self.find_captures(game_grid, update_move[1], -1):
                 # The value returned by find captures will be the negative index within the enemy teams list
                 cap_location = pos[capped - 1]
-                board[cap_location[0]][cap_location[1]] = 0
+                game_grid[cap_location[0]][cap_location[1]] = 0
                 pos[capped - 1] = None
-        return board, pos, neg
+        return game_grid, pos, neg
 
     def find_captures(self, grid, piece_location, team):
         return self.check_capture_direction_NS(grid, piece_location, team, range(piece_location[0]-1, -1, -1)) + \

@@ -2,6 +2,7 @@ import GameBoard as gb
 import numpy as np
 import math
 from random import random
+from datetime import datetime
 
 """
 - The neural network should take the 64x4 matrix that represents a move as input
@@ -72,14 +73,14 @@ saver = tf.train.Saver()
 
 
 if __name__ == "__main__":
-    nn_saver_dir = '/nn_checkpoints'
+    nn_saver_dir = './nn_checkpoints/'
 
     should_restore = False
 
     with tf.Session() as sesh:
 
         if should_restore:
-            saver.restore(sesh, '/nn_checkpoints/MODELGOESHERE.ckpt')
+            saver.restore(sesh, './nn_checkpoints/MODELGOESHERE.ckpt')
             print("Model restored")
         else:
             sesh.run(init_op)
@@ -125,8 +126,8 @@ if __name__ == "__main__":
                 gameboardRed.make_move(move_for_red)
 
             # Print out for debugging
-            print("RED SIDE BOARD")
-            gameboardRed.print_board()
+            #print("RED SIDE BOARD")
+            #gameboardRed.print_board()
 
             # Evaluate the board,
             # Winning outright should be worth a lot
@@ -150,5 +151,7 @@ if __name__ == "__main__":
             for move in moves_made_red:
                 train_step.run(feed_dict={x: move, y_: np.array([red_score])})
 
-
+            if games_played % 200 == 0:
+                saver.save(sesh, nn_saver_dir + 'checkpoint_' + str(games_played) + '.ckpt')
+            games_played += 1
 

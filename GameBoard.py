@@ -7,17 +7,17 @@ whoever has the most pieces
 - Should store every move for a game from each player
 """
 import numpy as np
+import copy
 
 class GameBoard:
-    #TODO REMOVE indexing!
 
     def __init__(self):
         self.grid = [[0 for i in range(8)] for j in range(8)]
-        self.neg = [(0, x) for x in range(8)]
-        self.pos = [(7, x) for x in range(8)]
+        self.neg = {(0, x) for x in range(8)}
+        self.pos = {(7, x) for x in range(8)}
         for index in range(8):
-            self.grid[0][index] = -index - 1 # adding one so that piece values don't drop to zero
-            self.grid[7][index] = index + 1 # subtracting one so that piece values don't drop to zero
+            self.grid[0][index] = -index - 1  # adding one so that piece values don't drop to zero
+            self.grid[7][index] = index + 1  # subtracting one so that piece values don't drop to zero
 
     def make_move(self, update_move):
         new_board, new_pos, new_neg = self.update_board(self.grid, self.pos, self.neg, update_move)
@@ -27,23 +27,26 @@ class GameBoard:
 
     def update_board(self, game_grid, pos, neg, update_move):
         # TODO this should NOT modify the board that is passed in, but it currently does
-        piece_val = game_grid[update_move[0][0]][update_move[0][1]]
-        game_grid[update_move[0][0]][update_move[0][1]] = 0
-        game_grid[update_move[1][0]][update_move[1][1]] = piece_val
+        former_loc = (update_move[0][0], update_move[0][1])
+        new_loc = (update_move[1][0], update_move[1][1])
+
+        piece_val = game_grid[former_loc[0]][former_loc[1]]
+        game_grid[former_loc[0]][former_loc[1]] = 0
+        game_grid[new_loc[0]][new_loc[1]] = piece_val
         if piece_val > 0:
-            pos[piece_val - 1] = update_move[1]
-            for capped in self.find_captures(game_grid, update_move[1], 1):
+            pos.remove(former_loc)
+            pos.add(new_loc)
+            for capped in self.find_captures(game_grid, new_loc, 1):
                 # The value returned by find captures will be the negative index within the enemy teams list
-                cap_location = neg[-1*capped - 1]
-                game_grid[cap_location[0]][cap_location[1]] = 0
-                neg[-1*capped - 1] = None
+                game_grid[capped[0]][capped[1]] = 0
+                neg.remove(capped)
         else:
-            neg[-piece_val - 1] = update_move[1]
+            neg.remove(former_loc)
+            neg.add(new_loc)
             for capped in self.find_captures(game_grid, update_move[1], -1):
                 # The value returned by find captures will be the negative index within the enemy teams list
-                cap_location = pos[capped - 1]
-                game_grid[cap_location[0]][cap_location[1]] = 0
-                pos[capped - 1] = None
+                game_grid[capped[0]][capped[1]] = 0
+                pos.remove(capped)
         return game_grid, pos, neg
 
     def find_captures(self, grid, piece_location, team):
@@ -58,7 +61,7 @@ class GameBoard:
             # piece type is the index of the piece, with positivity indicating same team, and negativity the opposite
             piece_type = team*grid[i][piece_location[1]]
             if piece_type < 0:
-                potential_capture.append(grid[i][piece_location[1]])
+                potential_capture.append((i, piece_location[1]))
             elif piece_type == 0:
                 break
             else:
@@ -71,7 +74,7 @@ class GameBoard:
             # piece type is the index of the piece, with positivity indicating same team, and negativity the opposite
             piece_type = team*grid[piece_location[0]][i]
             if piece_type < 0:
-                potential_capture.append(grid[piece_location[0]][i])
+                potential_capture.append((piece_location[0], i))
             elif piece_type == 0:
                 break
             else:
@@ -83,8 +86,6 @@ class GameBoard:
         The network will have a board for each team"""
         possible_moves = []
         for piece in self.pos:
-            if piece is None:
-                continue
             # For moving forward
             for i in range(piece[0]-1, -1, -1):
                 if self.grid[i][piece[1]] == 0:
@@ -114,23 +115,25 @@ class GameBoard:
     def deepcopy_board(self):
         """Used by to_matrix to allow for updating board without actually updating the board"""
         # TODO MAYBE check if this function or copy.deepcopy() is faster
-        new_pos = [x for x in self.pos]
-        new_neg = [x for x in self.neg]
+        new_pos = {x for x in self.pos}
+        new_neg = {x for x in self.neg}
         new_grid = [[i for i in j] for j in self.grid]
         return new_grid, new_pos, new_neg
 
     def to_matrix(self, update_move):
-        new_grid, new_pos, new_neg = self.deepcopy_board()
+        #new_grid, new_pos, new_neg = self.deepcopy_board()
+        new_grid = copy.deepcopy(self.grid)
+        new_pos = copy.deepcopy(self.pos)
+        new_neg = copy.deepcopy(self.neg)
         grid_after_move, updated_pos, updated_neg = self.update_board(new_grid, new_pos, new_neg, update_move)
-        board_matrix = np.zeros(shape=(8,8,4))
-        # Numpy indexing expects a list for each dimension. We pass in rows indices by going over the tuples in pos and column
-        # indices by doing the same. We know the third dimension we expect.
-        board_matrix[[x[0] for x in self.pos if x], [x[1] for x in self.pos if x], 0] = 1.0
-        board_matrix[[x[0] for x in self.neg if x], [x[1] for x in self.neg if x], 1] = 1.0
-        board_matrix[[x[0] for x in updated_pos if x], [x[1] for x in updated_pos if x], 2] = 1.0
-        board_matrix[[x[0] for x in updated_neg if x], [x[1] for x in updated_neg if x], 3] = 1.0
+        board_matrix = np.zeros(shape=(8, 8, 4))
+        # Numpy indexing expects a list for each dimension. We pass in rows indices by going over the tuples in
+        # pos and column indices by doing the same. We know the third dimension we expect.
+        board_matrix[[x[0] for x in self.pos], [x[1] for x in self.pos], 0] = 1.0
+        board_matrix[[x[0] for x in self.neg], [x[1] for x in self.neg], 1] = 1.0
+        board_matrix[[x[0] for x in updated_pos], [x[1] for x in updated_pos], 2] = 1.0
+        board_matrix[[x[0] for x in updated_neg], [x[1] for x in updated_neg], 3] = 1.0
         return board_matrix
-
 
     def print_board(self):
         board_str = ""

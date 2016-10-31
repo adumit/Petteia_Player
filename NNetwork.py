@@ -3,6 +3,7 @@ import numpy as np
 import math
 from random import random
 from datetime import datetime
+import sys
 
 """
 - The neural network should take the 64x4 matrix that represents a move as input
@@ -25,40 +26,82 @@ def conv3d(x, W, strides):
 def max_pool3d_2x2(x, ksize, strides):
   return tf.nn.max_pool3d(x, ksize=ksize, strides=strides, padding='SAME')
 
-# ------------------- Network Definition -------------------
+# ------------------- Red-side Network Definition -------------------
+x_red = tf.placeholder(tf.float32, shape=[8, 8, 4])
+y__red = tf.placeholder(tf.float32, shape=[1])
 
-x = tf.placeholder(tf.float32, shape=[8, 8, 4])
-y_ = tf.placeholder(tf.float32, shape=[1])
-
-x_image = tf.reshape(x, [-1, 4, 8, 8, 1])
+x_image_red = tf.reshape(x_red, [-1, 4, 8, 8, 1])
 
 # first convolutional layer
-W_conv1 = weight_variable([4, 2, 2, 1, 32], 'W_conv1')
-b_conv1 = bias_variable([32])
-h_conv1 = tf.nn.relu(conv3d(x_image, W_conv1, strides=[1,4,1,1,1]) + b_conv1)
-h_pool1 = max_pool3d_2x2(h_conv1, ksize=[1, 1, 2, 2, 1], strides=[1, 1, 2, 2, 1])
+W_conv1_red = weight_variable([4, 2, 2, 1, 32], 'W_conv1_red')
+b_conv1_red = bias_variable([32])
+h_conv1_red = tf.nn.relu(conv3d(x_image_red, W_conv1_red, strides=[1,4,1,1,1]) + b_conv1_red)
+h_pool1_red = max_pool3d_2x2(h_conv1_red, ksize=[1, 1, 2, 2, 1], strides=[1, 1, 2, 2, 1])
 
 # second convolutional layer
-W_conv2 = weight_variable([1, 4, 4, 32, 64], 'W_conv2') ### TODO: THIS CALL IS QUESTIONABLE... why 1, 4, 4 as first three args
-b_conv2 = bias_variable([64])
-h_conv2 = tf.nn.relu(conv3d(h_pool1, W_conv2, strides=[1,4,1,1,1]) + b_conv2)
-h_pool2 = max_pool3d_2x2(h_conv1, ksize=[1, 1, 2, 2, 1], strides=[1, 1, 2, 2, 1])
+W_conv2_red = weight_variable([1, 4, 4, 32, 64], 'W_conv2_red') ### TODO: THIS CALL IS QUESTIONABLE... why 1, 4, 4 as first three args
+b_conv2_red = bias_variable([64])
+h_conv2_red = tf.nn.relu(conv3d(h_pool1_red, W_conv2_red, strides=[1,4,1,1,1]) + b_conv2_red)
+h_pool2_red = max_pool3d_2x2(h_conv1_red, ksize=[1, 1, 2, 2, 1], strides=[1, 1, 2, 2, 1])
 
 
 # densely connected layer
-W_fc1 = weight_variable([512, 1024], 'W_fc1')
-b_fc1 = bias_variable([1024])
-h_pool2_flat = tf.reshape(h_pool2, [-1, 512])
-h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
+W_fc1_red = weight_variable([512, 1024], 'W_fc1_red')
+b_fc1_red = bias_variable([1024])
+h_pool2_flat_red = tf.reshape(h_pool2_red, [-1, 512])
+h_fc1_red = tf.nn.relu(tf.matmul(h_pool2_flat_red, W_fc1_red) + b_fc1_red)
 
 # softmax for classifying as good move or bad move
-W_fc2 = weight_variable([1024, 1], 'W_fc2')
-b_fc2 = bias_variable([1])
-y_conv = tf.matmul(h_fc1, W_fc2) + b_fc2
+W_fc2_red = weight_variable([1024, 1], 'W_fc2_red')
+b_fc2_red = bias_variable([1])
+y_conv_red = tf.matmul(h_fc1_red, W_fc2_red) + b_fc2_red
 
-squared_error = tf.square(y_conv-y_)
-train_step = tf.train.AdamOptimizer(1e-4).minimize(squared_error)
+# This loss function should seek to choose the best moves that lead to the best outcome
+# Mutliplying a good move * good outcome will lead to a very large (negative here) number.
+# Which is the best minimization. A high predicted move * a bad outcome will be very bad,
+# which satifies the goal
+loss_func_red = -y_conv_red*y__red
+train_step_red = tf.train.AdamOptimizer(1e-4).minimize(loss_func_red)
 
+# ------------------- Black-side Network Definition -------------------
+x_black = tf.placeholder(tf.float32, shape=[8, 8, 4])
+y__black = tf.placeholder(tf.float32, shape=[1])
+
+x_image_black = tf.reshape(x_black, [-1, 4, 8, 8, 1])
+
+# first convolutional layer
+W_conv1_black = weight_variable([4, 2, 2, 1, 32], 'W_conv1_black')
+b_conv1_black = bias_variable([32])
+h_conv1_black = tf.nn.relu(conv3d(x_image_black, W_conv1_black, strides=[1,4,1,1,1]) + b_conv1_black)
+h_pool1_black = max_pool3d_2x2(h_conv1_black, ksize=[1, 1, 2, 2, 1], strides=[1, 1, 2, 2, 1])
+
+# second convolutional layer
+W_conv2_black = weight_variable([1, 4, 4, 32, 64], 'W_conv2_black') ### TODO: THIS CALL IS QUESTIONABLE... why 1, 4, 4 as first three args
+b_conv2_black = bias_variable([64])
+h_conv2_black = tf.nn.relu(conv3d(h_pool1_black, W_conv2_black, strides=[1,4,1,1,1]) + b_conv2_black)
+h_pool2_black = max_pool3d_2x2(h_conv1_black, ksize=[1, 1, 2, 2, 1], strides=[1, 1, 2, 2, 1])
+
+
+# densely connected layer
+W_fc1_black = weight_variable([512, 1024], 'W_fc1_black')
+b_fc1_black = bias_variable([1024])
+h_pool2_flat_black = tf.reshape(h_pool2_black, [-1, 512])
+h_fc1_black = tf.nn.relu(tf.matmul(h_pool2_flat_black, W_fc1_black) + b_fc1_black)
+
+# softmax for classifying as good move or bad move
+W_fc2_black = weight_variable([1024, 1], 'W_fc2_black')
+b_fc2_black = bias_variable([1])
+y_conv_black = tf.matmul(h_fc1_black, W_fc2_black) + b_fc2_black
+
+# This loss function should seek to choose the best moves that lead to the best outcome
+# Mutliplying a good move * good outcome will lead to a very large (negative here) number.
+# Which is the best minimization. A high predicted move * a bad outcome will be very bad,
+# which satifies the goal
+loss_func_black = -y__black*y_conv_black
+train_step_black = tf.train.AdamOptimizer(1e-4).minimize(loss_func_black)
+
+
+# --------------- Global Tensorflow variables ---------------
 init_op = tf.initialize_all_variables()
 saver = tf.train.Saver()
 
@@ -76,6 +119,7 @@ if __name__ == "__main__":
     nn_saver_dir = './nn_checkpoints/'
 
     should_restore = False
+    should_write_output_to_file = False
 
     with tf.Session() as sesh:
 
@@ -85,28 +129,35 @@ if __name__ == "__main__":
         else:
             sesh.run(init_op)
 
+        if should_write_output_to_file:
+            sys.stdout = open('print_out.txt', 'w')
+
         games_played = 0
         while(True):
+            start_time = datetime.now()
             # ----- Play a game of Petteia -----
             # Generate gameboards, one for each side
             moves_made_red = []
-            # moves_made_black = []
+            moves_made_black = []
             gameboardRed = gb.GameBoard()
             gameboardBlack = gb.GameBoard()
             for iter in range(100):
                 # Make a move for red
                 possible_moves = gameboardRed.generate_moves()
-                move_scores = []
+                move_scores = np.zeros(len(possible_moves))
                 for i in range(len(possible_moves)):
-                    try:
-                        matrix_board = gameboardRed.to_matrix(possible_moves[i])
-                    except TypeError:
-                        print(possible_moves[i])
-                        print(gameboardRed.print_board())
-                        break
-                    move_scores.append(sesh.run(y_conv, feed_dict={x: matrix_board}))
+                    matrix_board = gameboardRed.to_matrix(possible_moves[i])
+                    move_scores[i] = sesh.run(y_conv_red, feed_dict={x_red: matrix_board})
                 # With the best move found, move on both red and black boards
-                best_move = possible_moves[np.argmax(move_scores)]
+                rand_choice = random()
+                if (rand_choice < .9):
+                    best_move = possible_moves[np.argmax(move_scores)]
+                elif (rand_choice < .95):
+                    best_move = possible_moves[move_scores.argsort()[1]]
+                elif (rand_choice < .985):
+                    best_move = possible_moves[move_scores.argsort()[2]]
+                else:
+                    best_move = possible_moves[math.floor(random() * len(move_scores))]
                 moves_made_red.append(gameboardRed.to_matrix(best_move))
                 gameboardRed.make_move(best_move)
                 move_for_black = ((7 - best_move[0][0], 7 - best_move[0][1]), (7 - best_move[1][0], 7 - best_move[1][1]))
@@ -114,20 +165,32 @@ if __name__ == "__main__":
 
                 # Make a move for black
                 possible_moves = gameboardBlack.generate_moves()
-                move_scores = []
+                move_scores = np.zeros(len(possible_moves))
                 for i in range(len(possible_moves)):
                     matrix_board = gameboardBlack.to_matrix(possible_moves[i])
-                    move_scores.append(sesh.run(y_conv, feed_dict={x: matrix_board}))
+                    before_pass = datetime.now()
+                    move_scores[i] = sesh.run(y_conv_red, feed_dict={x_red: matrix_board})
+                    if should_write_output_to_file:
+                        if i == 0:
+                            print(datetime.now() - before_pass)
                 # With the best move found, move on both red and black boards
-                best_move = possible_moves[np.argmax(move_scores)]
-                # moves_made_black.append(gameboardBlack.to_matrix(best_move))
+                rand_choice = random()
+                if (rand_choice < .6):
+                    best_move = possible_moves[np.argmax(move_scores)]
+                elif (rand_choice < .75):
+                    best_move = possible_moves[move_scores.argsort()[1]]
+                elif (rand_choice < .9):
+                    best_move = possible_moves[move_scores.argsort()[2]]
+                else:
+                    best_move = possible_moves[math.floor(random() * len(move_scores))]
+                moves_made_black.append(gameboardBlack.to_matrix(best_move))
                 gameboardBlack.make_move(best_move)
                 move_for_red = ((7 - best_move[0][0], 7 - best_move[0][1]), (7 - best_move[1][0], 7 - best_move[1][1]))
                 gameboardRed.make_move(move_for_red)
 
             # Print out for debugging
-            #print("RED SIDE BOARD")
-            #gameboardRed.print_board()
+            print("RED SIDE BOARD")
+            gameboardRed.print_board()
 
             # Evaluate the board,
             # Winning outright should be worth a lot
@@ -141,17 +204,23 @@ if __name__ == "__main__":
             elif num_black > num_red:
                 red_score = -math.pow((num_black - num_red), 1.5)
             else: # TIED, slightly change weights
-                red_score = random() - .5 # random() generates numbers on (0,1) subtract 0.5 to get to (-.5, .5)
+                # random() generates numbers on (0,1)
+                # Want to get numbers in (-0.125, 0.125)
+                red_score = random()*0.25 - .125
             # Reward for winning a game entirely
             if num_red == 0:
                 red_score -= 5
             elif num_black == 0:
                 red_score +=5
+            black_score = -red_score
 
             for move in moves_made_red:
-                train_step.run(feed_dict={x: move, y_: np.array([red_score])})
+                train_step_red.run(feed_dict={x_red: move, y__red: np.array([red_score])})
+            for move in moves_made_black:
+                train_step_black.run(feed_dict={x_black: move, y__black: np.array([black_score])})
+            print("Time for one game: " + str(datetime.now() - start_time))
 
             if games_played % 200 == 0:
-                saver.save(sesh, nn_saver_dir + 'checkpoint_' + str(games_played) + '.ckpt')
+                saver.save(sesh, nn_saver_dir + 'divergence_90_60_random_checkpoint_' + str(games_played) + '.ckpt')
             games_played += 1
 

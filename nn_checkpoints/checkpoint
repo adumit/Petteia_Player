@@ -1,6 +1,2 @@
 model_checkpoint_path: "divergence_90_60_random_checkpoint_1000.ckpt"
-all_model_checkpoint_paths: "divergence_90_60_random_checkpoint_200.ckpt"
-all_model_checkpoint_paths: "divergence_90_60_random_checkpoint_400.ckpt"
-all_model_checkpoint_paths: "divergence_90_60_random_checkpoint_600.ckpt"
-all_model_checkpoint_paths: "divergence_90_60_random_checkpoint_800.ckpt"
 all_model_checkpoint_paths: "divergence_90_60_random_checkpoint_1000.ckpt"

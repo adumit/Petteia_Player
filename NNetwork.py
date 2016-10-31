@@ -118,16 +118,16 @@ saver = tf.train.Saver()
 if __name__ == "__main__":
     nn_saver_dir = './nn_checkpoints/'
 
-    should_restore = False
+    should_restore = True
     should_write_output_to_file = False
 
     with tf.Session() as sesh:
 
+        sesh.run(init_op)
         if should_restore:
-            saver.restore(sesh, './nn_checkpoints/MODELGOESHERE.ckpt')
+            saver.restore(sesh, './nn_checkpoints/divergence_90_60_random_checkpoint_1000.ckpt')
             print("Model restored")
-        else:
-            sesh.run(init_op)
+
 
         if should_write_output_to_file:
             sys.stdout = open('print_out.txt', 'w')
@@ -144,6 +144,8 @@ if __name__ == "__main__":
             for iter in range(100):
                 # Make a move for red
                 possible_moves = gameboardRed.generate_moves()
+                if len(possible_moves) == 0:
+                    break
                 move_scores = np.zeros(len(possible_moves))
                 for i in range(len(possible_moves)):
                     matrix_board = gameboardRed.to_matrix(possible_moves[i])
@@ -165,6 +167,8 @@ if __name__ == "__main__":
 
                 # Make a move for black
                 possible_moves = gameboardBlack.generate_moves()
+                if len(possible_moves) == 0:
+                    break
                 move_scores = np.zeros(len(possible_moves))
                 for i in range(len(possible_moves)):
                     matrix_board = gameboardBlack.to_matrix(possible_moves[i])
@@ -221,6 +225,6 @@ if __name__ == "__main__":
             print("Time for one game: " + str(datetime.now() - start_time))
 
             if games_played % 200 == 0:
-                saver.save(sesh, nn_saver_dir + 'divergence_90_60_random_checkpoint_' + str(games_played) + '.ckpt')
+                saver.save(sesh, nn_saver_dir + 'divergence_90_60_random_checkpoint_' + str(games_played + 1000) + '.ckpt')
             games_played += 1
 

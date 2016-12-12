@@ -1,2 +1,6 @@
-model_checkpoint_path: "divergence_90_60_random_checkpoint_1000.ckpt"
-all_model_checkpoint_paths: "divergence_90_60_random_checkpoint_1000.ckpt"
+model_checkpoint_path: "aggressive_new_loss_checkpoint_1200.ckpt"
+all_model_checkpoint_paths: "aggressive_new_loss_checkpoint_400.ckpt"
+all_model_checkpoint_paths: "aggressive_new_loss_checkpoint_600.ckpt"
+all_model_checkpoint_paths: "aggressive_new_loss_checkpoint_800.ckpt"
+all_model_checkpoint_paths: "aggressive_new_loss_checkpoint_1000.ckpt"
+all_model_checkpoint_paths: "aggressive_new_loss_checkpoint_1200.ckpt"

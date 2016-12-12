@@ -49,6 +49,14 @@ class GameBoard:
                 pos.remove(capped)
         return game_grid, pos, neg
 
+    def generate_capture_moves(self, move_list):
+        """Find all moves that would result in a capture. Assume the team is 'pos'"""
+        # possible_moves = self.generate_moves()
+        move_locations = [m[1] for m in move_list]
+        capture_outcomes = [m for m in move_locations if self.find_captures(self.grid, m, 1)]
+        return [m for m in move_list if m[1] in capture_outcomes]
+
+
     def find_captures(self, grid, piece_location, team):
         return self.check_capture_direction_NS(grid, piece_location, team, range(piece_location[0]-1, -1, -1)) + \
                self.check_capture_direction_NS(grid, piece_location, team, range(piece_location[0]+1, 8)) + \
@@ -135,10 +143,10 @@ class GameBoard:
         board_matrix[[x[0] for x in updated_neg], [x[1] for x in updated_neg], 3] = 1.0
         return board_matrix
 
-    def print_board(self):
-        board_str = ""
+    def print_board(self, should_return=False):
+        board_str = "    0   1   2   3   4   5   6   7   \n"
         for i in range(8):
-            line_str = "|"
+            line_str = str(i) + " |"
             for j in range(8):
                 if self.grid[i][j] < 0:
                     line_str += " - |"
@@ -147,6 +155,8 @@ class GameBoard:
                 else:
                     line_str += "   |"
             board_str += line_str + "\n"
+        if should_return:
+            return board_str
         print(board_str)
 
 

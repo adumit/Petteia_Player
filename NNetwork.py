@@ -63,7 +63,7 @@ class FCLayer(object):
         self.input = layer_input
         self.W_fc = weight_variable(shape=weight_dimensions, name="W" + name_suffix)
         self.b_fc = bias_variable(shape=[weight_dimensions[1]])
-        self.output = tf.nn.tanh(tf.matmul(self.input, self.W_fc) + self.b_fc)
+        self.activation = tf.matmul(self.input, self.W_fc) + self.b_fc
 
 
 class NNetwork(object):
@@ -83,10 +83,10 @@ class NNetwork(object):
                                 name_suffix="conv2_" + color)
         self.layer2flattened = tf.reshape(self.layer2.h_pool, [-1, 64])
         self.layer3 = FCLayer(self.layer2flattened, [64, 128], "_fc1_" + color)
-        self.layer4 = FCLayer(self.layer3.output, [128, 1], "_fc2_" + color)
+        self.layer4 = FCLayer(tf.nn.relu(self.layer3.activation), [128, 1], "_fc2_" + color)
 
-        self.y_hat = self.layer4.output
-        self.loss = tf.square(self.y_hat - self.y)
+        self.y_hat = self.layer4.activation
+        self.loss = tf.reduce_mean(tf.square(self.y_hat - self.y))
         self.optimizer = tf.train.AdamOptimizer(1e-4).minimize(self.loss)
 
         print(color + " network is built.")
@@ -103,12 +103,12 @@ class NNetwork(object):
 if __name__ == "__main__":
     nn_saver_dir = './nn_checkpoints/'
 
-    should_restore = False
-    should_write_output_to_file = False
-    test_output = False
+    FLAGS_should_restore = False
+    FLAGS_should_write_output_to_file = False
+    FLAGS_test_output = False
 
     # Constants for game playing
-    aggressive = True
+    FLAGS_aggressive = True
 
     test_out = ""
     max_checkpoint_val = 0
@@ -122,7 +122,7 @@ if __name__ == "__main__":
         saver = tf.train.Saver()
 
         sess.run(init_op)
-        if should_restore:
+        if FLAGS_should_restore:
             checkpoint_vals = []
             for root, dirs, files in os.walk(nn_saver_dir):
                 for f in files:
@@ -134,7 +134,7 @@ if __name__ == "__main__":
 
         games_played = 0
         while games_played < 50001:
-            if should_write_output_to_file:
+            if FLAGS_should_write_output_to_file:
                 f = open('print_out.txt', 'w')
             start_time = datetime.now()
             # ----- Play a game of Petteia -----
@@ -150,18 +150,18 @@ if __name__ == "__main__":
                     break
                 before_pass = datetime.now()
                 move_scores = sess.run(redNetwork.y_hat, feed_dict={redNetwork.x: [gameboardRed.to_matrix(m) for m in possible_moves]})
-                if should_write_output_to_file:
+                if FLAGS_should_write_output_to_file:
                     if iter == 0:
                         f.write("Time to pass all moves through network: " + str(datetime.now() - before_pass) + "\n")
                 # With the best move found, move on both red and black boards
                 rand_choice = random()
                 if len(moves_made_red) == 10:
-                    if should_write_output_to_file:
+                    if FLAGS_should_write_output_to_file:
                         f.write("Max score for iteration 10 and game " + str(games_played) + "was: " + str(np.max(move_scores)) + "\n")
                     else:
                         print(np.max(move_scores))
                         print(np.min(move_scores))
-                if (rand_choice < .9):
+                if rand_choice < .9:
                     best_move = possible_moves[np.argmax(move_scores)]
                 elif (rand_choice < .95) and len(possible_moves) > 1:
                     best_move = possible_moves[move_scores.argsort()[1]]
@@ -180,17 +180,19 @@ if __name__ == "__main__":
                     break
                 best_move = None
                 # Write in different ways for black to play here
-                if aggressive:
+                if FLAGS_aggressive:
                     capture_moves = gameboardBlack.generate_capture_moves(possible_moves)
                     if len(capture_moves) > 0:
-                        move_scores = sess.run(blackNetwork.y_hat, feed_dict={blackNetwork.x: [gameboardBlack.to_matrix(m) for m in capture_moves]})
+                        move_scores = sess.run(blackNetwork.y_hat, feed_dict={blackNetwork.x: [
+                            gameboardBlack.to_matrix(m) for m in capture_moves]})
                         best_move = capture_moves[np.argmax(move_scores)]
 
                 if best_move is None:
-                    move_scores = sess.run(blackNetwork.y_hat, feed_dict={blackNetwork.x: [gameboardBlack.to_matrix(m) for m in possible_moves]})
+                    move_scores = sess.run(blackNetwork.y_hat, feed_dict={blackNetwork.x: [
+                        gameboardBlack.to_matrix(m) for m in possible_moves]})
                     # With the best move found, move on both red and black boards
                     rand_choice = random()
-                    if (rand_choice < .9):
+                    if rand_choice < .9:
                         best_move = possible_moves[np.argmax(move_scores)]
                     elif (rand_choice < .94) and len(possible_moves) > 1:
                         best_move = possible_moves[move_scores.argsort()[1]]
@@ -246,16 +248,18 @@ if __name__ == "__main__":
                                                   blackNetwork.y: black_score_vec})
 
             games_played += 1
-            if test_output:
+            if FLAGS_test_output:
                 test_out += "Time to play and train on game " + str(games_played) + ": " + str(datetime.now() - start_time) + "\n"
-            if should_write_output_to_file:
+            elif FLAGS_should_write_output_to_file:
                 f.write("Time to play and train on game " + str(games_played) + ": " + str(datetime.now() - start_time) + "\n\n")
             else:
-                print("Time to play and train on game " + str(games_played) + ": " + str(datetime.now() - start_time))
+                print("Game " + str(games_played) + " had " + str(len(moves_made_red)) +
+                      " moves where red had " + str(num_red) + " pieces left "
+                      " and took " + str(datetime.now() - start_time))
 
             if games_played % 200 == 0:
-                redNetwork.saver.save(sess, nn_saver_dir + 'aggressive_new_loss_checkpoint_' + str(games_played + max_checkpoint_val) + '.ckpt')
-            if should_write_output_to_file:
+                saver.save(sess, nn_saver_dir + 'games_played_' + str(games_played + max_checkpoint_val) + '.ckpt')
+            if FLAGS_should_write_output_to_file:
                 f.close()
         sess.close()
     with open("print_out.txt", "w") as f:

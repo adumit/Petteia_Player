@@ -13,8 +13,13 @@ class GameBoard:
 
     def __init__(self):
         self.grid = [[0 for i in range(8)] for j in range(8)]
-        self.neg = {(0, x) for x in range(8)}
-        self.pos = {(7, x) for x in range(8)}
+        self.neg = set()
+        self.pos = set()
+        for x in range(8):
+            self.neg.add((0, x))
+            self.pos.add((7, x))
+        # self.neg = [(0, x) for x in range(8)]
+        # self.pos = [(7, x) for x in range(8)]
         for index in range(8):
             self.grid[0][index] = -index - 1  # adding one so that piece values don't drop to zero
             self.grid[7][index] = index + 1  # subtracting one so that piece values don't drop to zero
@@ -123,8 +128,14 @@ class GameBoard:
     def deepcopy_board(self):
         """Used by to_matrix to allow for updating board without actually updating the board"""
         # TODO MAYBE check if this function or copy.deepcopy() is faster
-        new_pos = {x for x in self.pos}
-        new_neg = {x for x in self.neg}
+        # new_pos = {x for x in self.pos}
+        # new_neg = {x for x in self.neg}
+        new_pos = set()
+        new_neg = set()
+        for x in self.pos:
+            new_pos.add(x)
+        for x in self.neg:
+            new_neg.add(x)
         new_grid = [[i for i in j] for j in self.grid]
         return new_grid, new_pos, new_neg
 
@@ -143,7 +154,7 @@ class GameBoard:
         board_matrix[[x[0] for x in updated_neg], [x[1] for x in updated_neg], 3] = 1.0
         return board_matrix
 
-    def print_board(self, should_return=False):
+    def print_board(self):
         board_str = "    0   1   2   3   4   5   6   7   \n"
         for i in range(8):
             line_str = str(i) + " |"
@@ -155,8 +166,6 @@ class GameBoard:
                 else:
                     line_str += "   |"
             board_str += line_str + "\n"
-        if should_return:
-            return board_str
         print(board_str)
 
 

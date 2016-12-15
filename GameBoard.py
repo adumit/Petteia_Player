@@ -128,6 +128,35 @@ class GameBoard:
         new_grid = [[i for i in j] for j in self.grid]
         return new_grid, new_pos, new_neg
 
+    def move_and_flip_board(self, update_move):
+
+        old_grid = copy.deepcopy(self.grid)
+        old_grid.reverse()
+        for i in range(len(old_grid)):
+            for j in range(len(old_grid[i])):
+                old_grid[i][j] = -1 * old_grid[i][j]
+
+        old_pos = copy.deepcopy(self.pos)
+        new_neg = set([])
+        for pos in old_pos:
+            new_neg.add((7 - pos[0], 7 - pos[1]))
+
+        old_neg = copy.deepcopy(self.neg)
+        new_pos = set([])
+        for neg in old_neg:
+            new_pos.add((7 - neg[0], 7 - neg[1]))
+
+        new_gb = GameBoard()
+        new_gb.grid = old_grid
+        new_gb.pos = new_pos
+        new_gb.neg = new_neg
+
+        new_gb.print_board()
+
+        flipped_update = ((7 - update_move[0][0], 7 - update_move[0][1]), (7 - update_move[1][0], 7 - update_move[1][1]))
+        new_gb.make_move(flipped_update)
+
+        return new_gb
 
     def to_matrix(self, update_move):
         #new_grid, new_pos, new_neg = self.deepcopy_board()

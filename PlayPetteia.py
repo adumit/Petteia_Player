@@ -20,7 +20,7 @@ if __name__ == "__main__":
         while True:
             print("")
             user_choice = input("What would you like to do? \n"
-                                "'pr': Play a game against the regular AI.\n",
+                                "'pr': Play a game against the regular AI.\n"
                                 "'pr+': Play a game against the regular AI with mini-max look ahead.\n"
                                 "'pa': Play a game against the aggressive AI.\n"
                                 "'w': Watch two AIs play each other.")

@@ -20,10 +20,11 @@ if __name__ == "__main__":
         while True:
             print("")
             user_choice = input("What would you like to do? \n"
-                                "'pr': Play a game against the regular AI.\n"
+                                "'pr': Play a game against the regular AI.\n",
+                                "'pr+': Play a game against the regular AI with mini-max look ahead.\n"
                                 "'pa': Play a game against the aggressive AI.\n"
                                 "'w': Watch two AIs play each other.")
-            if user_choice == 'pr':
+            if 'pr' in user_choice:
                 moves_made_red = []
                 moves_made_black = []
                 gameboardRed = gb.GameBoard()
@@ -32,10 +33,13 @@ if __name__ == "__main__":
                     possible_moves = gameboardRed.generate_moves()
                     if len(possible_moves) == 0:
                         break
-                    move_scores = sess.run(redNetwork.y_hat, feed_dict={
-                        redNetwork.x: [gameboardRed.to_matrix(m) for m in possible_moves]})
-                    # With the best move found, move on both red and black boards
-                    best_move = possible_moves[np.argmax(move_scores)]
+                    if "+" in user_choice:
+                        best_move = redNetwork.minimax_look_ahead_move(sess, gameboardRed, possible_moves)
+                    else:
+                        move_scores = sess.run(redNetwork.y_hat, feed_dict={
+                            redNetwork.x: [gameboardRed.to_matrix(m) for m in possible_moves]})
+                        # With the best move found, move on both red and black boards
+                        best_move = possible_moves[np.argmax(move_scores)]
                     moves_made_red.append(gameboardRed.to_matrix(best_move))
                     gameboardRed.make_move(best_move)
                     move_for_black = ((7 - best_move[0][0], 7 - best_move[0][1]),(7 - best_move[1][0], 7 - best_move[1][1]))
@@ -75,7 +79,8 @@ if __name__ == "__main__":
                     best_move = possible_moves[np.argmax(move_scores)]
                     moves_made_red.append(gameboardRed.to_matrix(best_move))
                     gameboardRed.make_move(best_move)
-                    move_for_black = ((7 - best_move[0][0], 7 - best_move[0][1]),(7 - best_move[1][0], 7 - best_move[1][1]))
+                    move_for_black = ((7 - best_move[0][0], 7 - best_move[0][1]),
+                                      (7 - best_move[1][0], 7 - best_move[1][1]))
                     gameboardBlack.make_move(move_for_black)
 
                     print("AI Played piece " + str(move_for_black[0]) + " to " + str(move_for_black[1]))

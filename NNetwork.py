@@ -91,6 +91,36 @@ class NNetwork(object):
 
         print(color + " network is built.")
 
+    def minimax_look_ahead_move(self, sess, gameBoard, possible_moves):
+        """
+        Find the move that maximizes my current expectation of reward accounting for the fact that my opponent is going
+        to jointly maximize the next move score and minimize the score I get on the next move as well. This takes the
+        form of my opponent choosing a move s.t. their score - score I would choose is maximized. I seek to maximize
+        my current move score - that expectation.
+        """
+        first_move_scores = sess.run(self.y_hat, feed_dict={
+            self.x: [gameboardRed.to_matrix(m) for m in possible_moves]})
+        opponent_scores = []
+        for m, score in zip(possible_moves, first_move_scores):
+            # 'I' make a move and then flip the board so 'I' can see from my opponents point of view
+            flipped_board = gameBoard.move_and_flip_board(m)
+            # Generate all my opponent's moves and scores
+            possible_opponent_moves = flipped_board.generate_moves()
+            opponent_scores = sess.run(self.y_hat, feed_dict={
+                self.x: [flipped_board.to_matrix(move) for move in possible_opponent_moves]})
+            max_moves = []
+            # For each (score, move) in my opponent's possibilities, append the max value I would receive
+            for opp_m, opp_score in zip(possible_opponent_moves, opponent_scores):
+                my_new_board = flipped_board.move_and_flip_board(opp_m)
+                my_next_possible_moves = flipped_board.generate_moves()
+                my_next_move_scores = sess.run(self.y_hat, feed_dict={
+                    self.x: [my_new_board.to_matrix(move) for move in my_next_possible_moves]})
+                max_moves.append(np.max(my_next_move_scores))
+            # Opponent would choose the move that maximizes his current payoff minus the payoff I would get
+            opponent_scores.append(np.min([opp_s - max_s for opp_s, max_s in zip(opponent_scores, max_moves)]))
+        return possible_moves[np.argmax(opponent_scores)]
+
+
 # --------------- Running the network ---------------
 
 # To evaluate a gameboard, run this with a running session:
@@ -261,7 +291,7 @@ if __name__ == "__main__":
                       str(np.mean(red_move_max_min_diffs)))
 
             if games_played % 200 == 0:
-                saver.save(sess, nn_saver_dir + 'games_played_' + str(games_played) + "+" + str() + '.ckpt')
+                saver.save(sess, nn_saver_dir + 'games_played_' + str(games_played + max_checkpoint_val) + '.ckpt')
             if FLAGS_should_write_output_to_file:
                 f.close()
         sess.close()

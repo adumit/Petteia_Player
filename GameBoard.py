@@ -128,6 +128,7 @@ class GameBoard:
         new_grid = [[i for i in j] for j in self.grid]
         return new_grid, new_pos, new_neg
 
+
     def to_matrix(self, update_move):
         #new_grid, new_pos, new_neg = self.deepcopy_board()
         new_grid = copy.deepcopy(self.grid)

@@ -1,0 +1,6 @@
+model_checkpoint_path: "games_played_4000.ckpt"
+all_model_checkpoint_paths: "games_played_3200.ckpt"
+all_model_checkpoint_paths: "games_played_3400.ckpt"
+all_model_checkpoint_paths: "games_played_3600.ckpt"
+all_model_checkpoint_paths: "games_played_3800.ckpt"
+all_model_checkpoint_paths: "games_played_4000.ckpt"

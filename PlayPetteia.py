@@ -12,8 +12,10 @@ if __name__ == "__main__":
     with tf.Session() as sess:
         redNetwork = NNetwork.NNetwork("red")
         blackNetwork = NNetwork.NNetwork("black")
-        sess.run(redNetwork.init_op)
-        redNetwork.saver.restore(sess, tf.train.latest_checkpoint(nn_saver_dir))
+        init_op = tf.initialize_all_variables()
+        saver = tf.train.Saver()
+        sess.run(init_op)
+        saver.restore(sess, tf.train.latest_checkpoint(nn_saver_dir))
 
         while True:
             print("")
@@ -106,8 +108,8 @@ if __name__ == "__main__":
                     possible_moves = gameboardRed.generate_moves()
                     if len(possible_moves) == 0:
                         break
-                    move_scores = sess.run(NNetwork.y_conv_black, feed_dict={
-                        NNetwork.x_black: [gameboardRed.to_matrix(m) for m in
+                    move_scores = sess.run(redNetwork.y_hat, feed_dict={
+                        redNetwork.x: [gameboardRed.to_matrix(m) for m in
                                   possible_moves]})
                     # With the best move found, move on both red and black boards
                     best_move = possible_moves[np.argmax(move_scores)]
@@ -127,8 +129,8 @@ if __name__ == "__main__":
                     possible_moves = gameboardBlack.generate_moves()
                     if len(possible_moves) == 0:
                         break
-                    move_scores = sess.run(NNetwork.y_conv_black, feed_dict={
-                        NNetwork.x_black: [gameboardBlack.to_matrix(m) for m in
+                    move_scores = sess.run(blackNetwork.y_hat, feed_dict={
+                        blackNetwork.x: [gameboardBlack.to_matrix(m) for m in
                                   possible_moves]})
                     # With the best move found, move on both red and black boards
                     best_move = possible_moves[np.argmax(move_scores)]

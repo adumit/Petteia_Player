@@ -143,6 +143,7 @@ if __name__ == "__main__":
             moves_made_black = []
             gameboardRed = gb.GameBoard()
             gameboardBlack = gb.GameBoard()
+            red_move_max_min_diffs = []
             while len(gameboardRed.pos) > 0 and len(moves_made_red) < 100:
                 # Make a move for red
                 possible_moves = gameboardRed.generate_moves()
@@ -150,6 +151,7 @@ if __name__ == "__main__":
                     break
                 before_pass = datetime.now()
                 move_scores = sess.run(redNetwork.y_hat, feed_dict={redNetwork.x: [gameboardRed.to_matrix(m) for m in possible_moves]})
+                red_move_max_min_diffs.append(np.max(move_scores) - np.min(move_scores))
                 if FLAGS_should_write_output_to_file:
                     if iter == 0:
                         f.write("Time to pass all moves through network: " + str(datetime.now() - before_pass) + "\n")
@@ -236,8 +238,8 @@ if __name__ == "__main__":
             # elif num_black == 0:
             #     red_score += 1
             black_score = -red_score
-            discount_vec_red = np.array([math.pow(.99, p) for p in range(len(moves_made_red), 0, -1)])
-            discount_vec_black = np.array([math.pow(.99, p) for p in range(len(moves_made_black), 0, -1)])
+            discount_vec_red = np.array([math.pow(.98, p) for p in range(len(moves_made_red), 0, -1)])
+            discount_vec_black = np.array([math.pow(.98, p) for p in range(len(moves_made_black), 0, -1)])
 
             red_score_vec = np.reshape(red_score * discount_vec_red, newshape=[-1, 1])
             black_score_vec = np.reshape(black_score * discount_vec_black, newshape=[-1, 1])
@@ -254,11 +256,12 @@ if __name__ == "__main__":
                 f.write("Time to play and train on game " + str(games_played) + ": " + str(datetime.now() - start_time) + "\n\n")
             else:
                 print("Game " + str(games_played) + " had " + str(len(moves_made_red)) +
-                      " moves where red had " + str(num_red) + " pieces left "
-                      " and took " + str(datetime.now() - start_time))
+                      " moves where red had " + str(num_red) + " pieces left" +
+                      " and took " + str(datetime.now() - start_time) + ". The average max-min move difference was: " +
+                      str(np.mean(red_move_max_min_diffs)))
 
             if games_played % 200 == 0:
-                saver.save(sess, nn_saver_dir + 'games_played_' + str(games_played + max_checkpoint_val) + '.ckpt')
+                saver.save(sess, nn_saver_dir + 'games_played_' + str(games_played) + "+" + str() + '.ckpt')
             if FLAGS_should_write_output_to_file:
                 f.close()
         sess.close()

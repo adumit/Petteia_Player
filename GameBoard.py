@@ -133,7 +133,6 @@ class GameBoard:
         def reverse_list(l):
             return [l[i] for i in range(len(l) - 1, -1, -1)]
 
-        old_grid = copy.deepcopy(self.grid)
         old_grid = reverse_list([reverse_list(l) for l in self.grid])
         for i in range(len(old_grid)):
             for j in range(len(old_grid[i])):

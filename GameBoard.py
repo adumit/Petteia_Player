@@ -130,8 +130,11 @@ class GameBoard:
 
     def move_and_flip_board(self, update_move):
 
+        def reverse_list(l):
+            return [l[i] for i in range(len(l) - 1, -1, -1)]
+
         old_grid = copy.deepcopy(self.grid)
-        old_grid.reverse()
+        old_grid = reverse_list([reverse_list(l) for l in self.grid])
         for i in range(len(old_grid)):
             for j in range(len(old_grid[i])):
                 old_grid[i][j] = -1 * old_grid[i][j]
@@ -150,8 +153,6 @@ class GameBoard:
         new_gb.grid = old_grid
         new_gb.pos = new_pos
         new_gb.neg = new_neg
-
-        new_gb.print_board()
 
         flipped_update = ((7 - update_move[0][0], 7 - update_move[0][1]), (7 - update_move[1][0], 7 - update_move[1][1]))
         new_gb.make_move(flipped_update)

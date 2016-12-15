@@ -98,6 +98,7 @@ class NNetwork(object):
         form of my opponent choosing a move s.t. their score - score I would choose is maximized. I seek to maximize
         my current move score - that expectation.
         """
+        print("Thinking...")
         first_move_scores = sess.run(self.y_hat, feed_dict={
             self.x: [gameBoard.to_matrix(m) for m in possible_moves]})
         opponent_scores = []
@@ -109,19 +110,15 @@ class NNetwork(object):
             opponent_scores = sess.run(self.y_hat, feed_dict={
                 self.x: [flipped_board.to_matrix(move) for move in possible_opponent_moves]})
             max_moves = []
-            print("FLIPPED BOARD")
-            flipped_board.print_board()
             # For each (score, move) in my opponent's possibilities, append the max value I would receive
             for opp_m, opp_score in zip(possible_opponent_moves, opponent_scores):
                 my_new_board = flipped_board.move_and_flip_board(opp_m)
-                print("MY NEW BOARD")
-                my_new_board.print_board()
-                my_next_possible_moves = flipped_board.generate_moves()
+                my_next_possible_moves = my_new_board.generate_moves()
                 my_next_move_scores = sess.run(self.y_hat, feed_dict={
                     self.x: [my_new_board.to_matrix(move) for move in my_next_possible_moves]})
                 max_moves.append(np.max(my_next_move_scores))
             # Opponent would choose the move that maximizes his current payoff minus the payoff I would get
-            opponent_scores.append(np.min([opp_s - max_s for opp_s, max_s in zip(opponent_scores, max_moves)]))
+            max_moves.append(np.min([opp_s - max_s for opp_s, max_s in zip(opponent_scores, max_moves)]))
         return possible_moves[np.argmax(opponent_scores)]
 
 

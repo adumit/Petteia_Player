@@ -32,7 +32,7 @@ def max_pool3d_2x2(x, ksize, strides):
 
 # ------------------- Red-side Network Definition -------------------
 x_red = tf.placeholder(tf.float32, shape=[None, 8, 8, 4])
-y__red = tf.placeholder(tf.float32, shape=[1])
+y__red = tf.placeholder(tf.float32, shape=[None, 1])
 
 x_image_red = tf.reshape(x_red, [-1, 4, 8, 8, 1])
 
@@ -65,12 +65,12 @@ y_conv_red = tf.matmul(h_fc1_red, W_fc2_red) + b_fc2_red
 # Mutliplying a good move * good outcome will lead to a very large (negative here) number.
 # Which is the best minimization. A high predicted move * a bad outcome will be very bad,
 # which satifies the goal
-loss_func_red = -y__red*tf.maximum(0.01, y_conv_red)
+loss_func_red = -y__red*tf.maximum(0.1, y_conv_red)
 train_step_red = tf.train.AdamOptimizer(1e-4).minimize(loss_func_red)
 
 # ------------------- Black-side Network Definition -------------------
 x_black = tf.placeholder(tf.float32, shape=[None, 8, 8, 4])
-y__black = tf.placeholder(tf.float32, shape=[1])
+y__black = tf.placeholder(tf.float32, shape=[None, 1])
 
 x_image_black = tf.reshape(x_black, [-1, 4, 8, 8, 1])
 
@@ -101,7 +101,7 @@ y_conv_black = tf.matmul(h_fc1_black, W_fc2_black) + b_fc2_black
 # Mutliplying a good move * good outcome will lead to a very large (negative here) number.
 # Which is the best minimization. A high predicted move * a bad outcome will be very bad,
 # which satifies the goal
-loss_func_black = -y__black*tf.maximum(0.01, y_conv_black)
+loss_func_black = -y__black*tf.maximum(0.1, y_conv_black)
 train_step_black = tf.train.AdamOptimizer(1e-4).minimize(loss_func_black)
 
 
@@ -123,7 +123,7 @@ if __name__ == "__main__":
     nn_saver_dir = './nn_checkpoints/'
 
     # Constants for overall file
-    should_restore = True
+    should_restore = False
     should_write_output_to_file = False
     test_output = False
 
@@ -163,6 +163,10 @@ if __name__ == "__main__":
                 if len(possible_moves) == 0:
                     break
                 before_pass = datetime.now()
+                print(h_pool1_red.eval(feed_dict={
+                    x_red: [gameboardRed.to_matrix(m) for m in
+                            possible_moves]}).shape)
+                print(h_pool2_red.eval(feed_dict={x_red: [gameboardRed.to_matrix(m) for m in possible_moves]}).shape)
                 move_scores = sesh.run(y_conv_red, feed_dict={x_red: [gameboardRed.to_matrix(m) for m in possible_moves]})
                 if should_write_output_to_file:
                     if iter == 0:
@@ -174,6 +178,7 @@ if __name__ == "__main__":
                         f.write("Max score for iteration 10 and game " + str(games_played) + "was: " + str(np.max(move_scores)) + "\n")
                     else:
                         print(np.max(move_scores))
+                        print(np.min(move_scores))
                 if (rand_choice < .9):
                     best_move = possible_moves[np.argmax(move_scores)]
                 elif (rand_choice < .95) and len(possible_moves) > 1:
@@ -247,11 +252,20 @@ if __name__ == "__main__":
             #     red_score += 1
             black_score = -red_score
 
+            discount_vec_red = np.array(
+                [math.pow(.99, p) for p in range(len(moves_made_red), 0, -1)])
+            discount_vec_black = np.array(
+                [math.pow(.99, p) for p in range(len(moves_made_black), 0, -1)])
+
+            red_score_vec = np.reshape(red_score * discount_vec_red, newshape=[-1, 1])
+            black_score_vec = np.reshape(black_score * discount_vec_black,
+                                       newshape=[-1, 1])
+
             # Tensorflow (like numpy) will broadcast the single value here (the score from the game) to the entire array when doing
             # The multiplication, so it is fine to leave it as a single value rather than a list of equivalent losses with the length of
             # the number of moves
-            train_step_red.run(feed_dict={x_red: moves_made_red, y__red: np.array([red_score / len(moves_made_red)])})
-            train_step_black.run(feed_dict={x_black: moves_made_black, y__black: np.array([black_score / len(moves_made_black)])})
+            train_step_red.run(feed_dict={x_red: moves_made_red, y__red: red_score_vec})
+            train_step_black.run(feed_dict={x_black: moves_made_black, y__black: black_score_vec})
 
             games_played += 1
             if test_output:

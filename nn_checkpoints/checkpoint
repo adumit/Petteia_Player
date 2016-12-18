@@ -1,6 +1,2 @@
-model_checkpoint_path: "aggressive_new_loss_checkpoint_1200.ckpt"
-all_model_checkpoint_paths: "aggressive_new_loss_checkpoint_400.ckpt"
-all_model_checkpoint_paths: "aggressive_new_loss_checkpoint_600.ckpt"
-all_model_checkpoint_paths: "aggressive_new_loss_checkpoint_800.ckpt"
-all_model_checkpoint_paths: "aggressive_new_loss_checkpoint_1000.ckpt"
-all_model_checkpoint_paths: "aggressive_new_loss_checkpoint_1200.ckpt"
+model_checkpoint_path: "black_-10"
+all_model_checkpoint_paths: "black_-10"

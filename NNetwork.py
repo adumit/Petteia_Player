@@ -16,98 +16,114 @@ warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
 
 import tensorflow as tf
 
+
 # ------------------- Function Definitions -------------------
 def weight_variable(shape, name):
-  return tf.get_variable(name=name, shape=shape, initializer=tf.contrib.layers.xavier_initializer())
+    return tf.get_variable(name=name, shape=shape, initializer=tf.contrib.layers.xavier_initializer())
+
 
 def bias_variable(shape):
-  initial = tf.constant(0.1, shape=shape)
-  return tf.Variable(initial)
+    initial = tf.constant(0.1, shape=shape)
+    return tf.Variable(initial)
+
 
 def conv3d(x, W, strides):
-  return tf.nn.conv3d(x, W, strides=strides, padding='SAME')
+    return tf.nn.conv3d(x, W, strides=strides, padding='SAME')
+
 
 def max_pool3d_2x2(x, ksize, strides):
-  return tf.nn.max_pool3d(x, ksize=ksize, strides=strides, padding='SAME')
+    return tf.nn.max_pool3d(x, ksize=ksize, strides=strides, padding='SAME')
 
-# ------------------- Red-side Network Definition -------------------
-x_red = tf.placeholder(tf.float32, shape=[None, 8, 8, 4])
-y__red = tf.placeholder(tf.float32, shape=[None, 1])
+# ------------------- Network Definitions -------------------
+class ConvLayer(object):
 
-x_image_red = tf.reshape(x_red, [-1, 4, 8, 8, 1])
-
-# TODO: Try testing with different convolution sizes at the first layer
-# first convolutional layer
-W_conv1_red = weight_variable([4, 4, 4, 1, 32], 'W_conv1_red')
-b_conv1_red = bias_variable([32])
-h_conv1_red = tf.nn.relu(conv3d(x_image_red, W_conv1_red, strides=[1,4,1,1,1]) + b_conv1_red)
-h_pool1_red = max_pool3d_2x2(h_conv1_red, ksize=[1, 1, 2, 2, 1], strides=[1, 1, 2, 2, 1])
-
-# second convolutional layer
-W_conv2_red = weight_variable([1, 2, 2, 32, 64], 'W_conv2_red')
-b_conv2_red = bias_variable([64])
-h_conv2_red = tf.nn.relu(conv3d(h_pool1_red, W_conv2_red, strides=[1,1,2,2,1]) + b_conv2_red)
-h_pool2_red = max_pool3d_2x2(h_conv1_red, ksize=[1, 1, 2, 2, 1], strides=[1, 1, 2, 2, 1])
-
-
-# densely connected layer
-W_fc1_red = weight_variable([512, 1024], 'W_fc1_red')
-b_fc1_red = bias_variable([1024])
-h_pool2_flat_red = tf.reshape(h_pool2_red, [-1, 512])
-h_fc1_red = tf.nn.relu(tf.matmul(h_pool2_flat_red, W_fc1_red) + b_fc1_red)
-
-# softmax for classifying as good move or bad move
-W_fc2_red = weight_variable([1024, 1], 'W_fc2_red')
-b_fc2_red = bias_variable([1])
-y_conv_red = tf.matmul(h_fc1_red, W_fc2_red) + b_fc2_red
-
-# This loss function should seek to choose the best moves that lead to the best outcome
-# Mutliplying a good move * good outcome will lead to a very large (negative here) number.
-# Which is the best minimization. A high predicted move * a bad outcome will be very bad,
-# which satifies the goal
-loss_func_red = -y__red*tf.maximum(0.1, y_conv_red)
-train_step_red = tf.train.AdamOptimizer(1e-4).minimize(loss_func_red)
-
-# ------------------- Black-side Network Definition -------------------
-x_black = tf.placeholder(tf.float32, shape=[None, 8, 8, 4])
-y__black = tf.placeholder(tf.float32, shape=[None, 1])
-
-x_image_black = tf.reshape(x_black, [-1, 4, 8, 8, 1])
-
-# first convolutional layer
-W_conv1_black = weight_variable([4, 4, 4, 1, 32], 'W_conv1_black')
-b_conv1_black = bias_variable([32])
-h_conv1_black = tf.nn.relu(conv3d(x_image_black, W_conv1_black, strides=[1,4,1,1,1]) + b_conv1_black)
-h_pool1_black = max_pool3d_2x2(h_conv1_black, ksize=[1, 1, 2, 2, 1], strides=[1, 1, 2, 2, 1])
-
-# second convolutional layer
-W_conv2_black = weight_variable([1, 4, 4, 32, 64], 'W_conv2_black')
-b_conv2_black = bias_variable([64])
-h_conv2_black = tf.nn.relu(conv3d(h_pool1_black, W_conv2_black, strides=[1,1,2,2,1]) + b_conv2_black)
-h_pool2_black = max_pool3d_2x2(h_conv1_black, ksize=[1, 1, 2, 2, 1], strides=[1, 1, 2, 2, 1])
-
-# densely connected layer
-W_fc1_black = weight_variable([512, 1024], 'W_fc1_black')
-b_fc1_black = bias_variable([1024])
-h_pool2_flat_black = tf.reshape(h_pool2_black, [-1, 512])
-h_fc1_black = tf.nn.relu(tf.matmul(h_pool2_flat_black, W_fc1_black) + b_fc1_black)
-
-# softmax for classifying as good move or bad move
-W_fc2_black = weight_variable([1024, 1], 'W_fc2_black')
-b_fc2_black = bias_variable([1])
-y_conv_black = tf.matmul(h_fc1_black, W_fc2_black) + b_fc2_black
-
-# This loss function should seek to choose the best moves that lead to the best outcome
-# Mutliplying a good move * good outcome will lead to a very large (negative here) number.
-# Which is the best minimization. A high predicted move * a bad outcome will be very bad,
-# which satifies the goal
-loss_func_black = -y__black*tf.maximum(0.1, y_conv_black)
-train_step_black = tf.train.AdamOptimizer(1e-4).minimize(loss_func_black)
+    def __init__(self, layer_input, in_channel, out_channel, weight_dims, conv_strides,
+                 pool_ksize, pool_strides, name_suffix):
+        """
+        :param input: Tensorflow variable that is the input to this layer
+        :param depth: Depth to look at for each convolution
+        :param in_channel: Number of channels going into the layer
+        :param out_channel: Number of channels out
+        :param window: A length-2 list of the window to look at
+        :param strides: A length-2 list of the stride size
+        :param name_suffix: Suffix to append to the variable names
+        """
+        self.input = layer_input
+        self.W_conv = weight_variable(weight_dims + [in_channel, out_channel],
+                                      name="W" + name_suffix)
+        self.b_conv = bias_variable([out_channel])
+        self.h_conv = tf.nn.relu(conv3d(self.input, self.W_conv, strides=conv_strides) + self.b_conv)
+        self.h_pool = max_pool3d_2x2(self.h_conv, ksize=pool_ksize, strides=pool_strides)
 
 
-# --------------- Global Tensorflow variables ---------------
-init_op = tf.initialize_all_variables()
-saver = tf.train.Saver()
+class FCLayer(object):
+
+    def __init__(self, layer_input, weight_dimensions, name_suffix):
+        self.input = layer_input
+        self.W_fc = weight_variable(shape=weight_dimensions, name="W" + name_suffix)
+        self.b_fc = bias_variable(shape=[weight_dimensions[1]])
+        self.activation = tf.matmul(self.input, self.W_fc) + self.b_fc
+
+
+class NNetwork(object):
+
+    def __init__(self, color):
+        # with tf.variable_scope(color + "_scope"):
+        self.x = tf.placeholder(tf.float32, shape=[None, 8, 8, 4])
+        self.y = tf.placeholder(tf.float32, shape=[None, 1])
+        self.x_image = tf.reshape(self.x, [-1, 4, 8, 8, 1])
+
+        self.layer1 = ConvLayer(layer_input=self.x_image, in_channel=1, out_channel=32,
+                                weight_dims=[4, 4, 4], conv_strides=[1, 4, 2, 2, 1],
+                                pool_ksize=[1, 1, 2, 2, 1], pool_strides=[1, 1, 2, 2, 1],
+                                name_suffix="conv1_" + color)
+        self.layer2 = ConvLayer(layer_input=self.layer1.h_pool, in_channel=32, out_channel=64,
+                                weight_dims=[1, 4, 4], conv_strides=[1, 1, 2, 2, 1],
+                                pool_ksize=[1, 1, 1, 1, 1], pool_strides=[1, 1, 1, 1, 1],
+                                name_suffix="conv2_" + color)
+        self.layer2flattened = tf.reshape(self.layer2.h_pool, [-1, 64])
+        self.layer3 = FCLayer(self.layer2flattened, [64, 128], "_fc1_" + color)
+        self.layer4 = FCLayer(tf.nn.relu(self.layer3.activation), [128, 1], "_fc2_" + color)
+
+        self.y_hat = self.layer4.activation
+        self.loss = tf.reduce_mean(tf.square(self.y_hat - self.y))
+        self.optimizer = tf.train.AdamOptimizer(1e-4).minimize(self.loss)
+
+        # self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=color + "_scope"))
+
+        print(color + " network is built.")
+
+    def minimax_look_ahead_move(self, sess, gameBoard, possible_moves):
+        """
+        Find the move that maximizes my current expectation of reward accounting for the fact that my opponent is going
+        to jointly maximize the next move score and minimize the score I get on the next move as well. This takes the
+        form of my opponent choosing a move s.t. their score - score I would choose is maximized. I seek to maximize
+        my current move score - that expectation.
+        """
+        print("Thinking...")
+        first_move_scores = sess.run(self.y_hat, feed_dict={
+            self.x: [gameBoard.to_matrix(m) for m in possible_moves]})
+        max_opp_score = []
+        for m, score in zip(possible_moves, first_move_scores):
+            # 'I' make a move and then flip the board so 'I' can see from my opponents point of view
+            flipped_board = gameBoard.move_and_flip_board(m)
+            # Generate all my opponent's moves and scores
+            possible_opponent_moves = flipped_board.generate_moves()
+            opponent_scores = sess.run(self.y_hat, feed_dict={
+                self.x: [flipped_board.to_matrix(move) for move in possible_opponent_moves]})
+            my_next_scores = []
+            # For each (score, move) in my opponent's possibilities, append the max value I would receive
+            for opp_m, opp_score in zip(possible_opponent_moves, opponent_scores):
+                my_new_board = flipped_board.move_and_flip_board(opp_m)
+                my_next_possible_moves = my_new_board.generate_moves()
+                my_next_move_scores = sess.run(self.y_hat, feed_dict={
+                    self.x: [my_new_board.to_matrix(move) for move in my_next_possible_moves]})
+                my_next_scores.append(np.max(my_next_move_scores))
+            # Opponent would choose the move that maximizes his current payoff minus the payoff I would get
+            max_opp_score.append(np.max([opp_s - max_s for opp_s, max_s in zip(opponent_scores, my_next_scores)]))
+        # I want to maximize my score on this move minus the score my opponent would expect to achieve
+        return possible_moves[np.argmax([my_score - max_opp_score
+                                         for my_score, max_opp_score in zip(first_move_scores, max_opp_score)])]
 
 # --------------- Running the network ---------------
 
@@ -118,37 +134,52 @@ saver = tf.train.Saver()
 # train_step.run(feed_dict={x: INPUTS, y_: LABELS})
 # Where x: is the input game boards and y is the labels for each
 
-
 if __name__ == "__main__":
-    nn_saver_dir = './nn_checkpoints/'
+    red_saver_dir = "./red_network_checkpoints/"
+    black_saver_dir = "./black_network_checkpoints/"
 
-    # Constants for overall file
-    should_restore = False
-    should_write_output_to_file = False
-    test_output = False
+    FLAGS_should_restore_red = True
+    FLAGS_should_restore_black = True
+    FLAGS_should_write_output_to_file = False
+    FLAGS_test_output = False
 
     # Constants for game playing
-    aggressive = True
+    FLAGS_aggressive = True
 
     test_out = ""
     max_checkpoint_val = 0
 
-    with tf.Session() as sesh:
+    with tf.Session() as sess:
 
-        sesh.run(init_op)
-        if should_restore:
+        redNetwork = NNetwork("red")
+        blackNetwork = NNetwork("black")
+
+        init_op = tf.initialize_all_variables()
+
+        sess.run(init_op)
+
+        if FLAGS_should_restore_red:
             checkpoint_vals = []
-            for root, dirs, files in os.walk(nn_saver_dir):
+            for root, dirs, files in os.walk(red_saver_dir):
                 for f in files:
                     checkpoint_vals.append(re.search(r'\d+', f))
             checkpoint_vals = [int(x.group()) for x in checkpoint_vals if x]
             max_checkpoint_val = max(checkpoint_vals)
-            saver.restore(sesh, nn_saver_dir + 'aggressive_new_loss_checkpoint_' + str(max_checkpoint_val) +'.ckpt')
-            print("Model restored")
+            redNetwork.saver.restore(sess, tf.train.latest_checkpoint(red_saver_dir))
+            print("Red model restored")
+        if FLAGS_should_restore_red:
+            checkpoint_vals = []
+            for root, dirs, files in os.walk(black_saver_dir):
+                for f in files:
+                    checkpoint_vals.append(re.search(r'\d+', f))
+            checkpoint_vals = [int(x.group()) for x in checkpoint_vals if x]
+            max_checkpoint_val = max(checkpoint_vals)
+            blackNetwork.saver.restore(sess, tf.train.latest_checkpoint(black_saver_dir))
+            print("Black model restored")
 
         games_played = 0
         while games_played < 50001:
-            if should_write_output_to_file:
+            if FLAGS_should_write_output_to_file:
                 f = open('print_out.txt', 'w')
             start_time = datetime.now()
             # ----- Play a game of Petteia -----
@@ -157,29 +188,27 @@ if __name__ == "__main__":
             moves_made_black = []
             gameboardRed = gb.GameBoard()
             gameboardBlack = gb.GameBoard()
-            for iter in range(100):
+            red_move_max_min_diffs = []
+            while len(gameboardRed.pos) > 0 and len(moves_made_red) < 100:
                 # Make a move for red
                 possible_moves = gameboardRed.generate_moves()
                 if len(possible_moves) == 0:
                     break
                 before_pass = datetime.now()
-                print(h_pool1_red.eval(feed_dict={
-                    x_red: [gameboardRed.to_matrix(m) for m in
-                            possible_moves]}).shape)
-                print(h_pool2_red.eval(feed_dict={x_red: [gameboardRed.to_matrix(m) for m in possible_moves]}).shape)
-                move_scores = sesh.run(y_conv_red, feed_dict={x_red: [gameboardRed.to_matrix(m) for m in possible_moves]})
-                if should_write_output_to_file:
+                move_scores = sess.run(redNetwork.y_hat, feed_dict={redNetwork.x: [gameboardRed.to_matrix(m) for m in possible_moves]})
+                red_move_max_min_diffs.append(np.max(move_scores) - np.min(move_scores))
+                if FLAGS_should_write_output_to_file:
                     if iter == 0:
                         f.write("Time to pass all moves through network: " + str(datetime.now() - before_pass) + "\n")
                 # With the best move found, move on both red and black boards
                 rand_choice = random()
-                if iter == 10:
-                    if should_write_output_to_file:
+                if len(moves_made_red) == 10:
+                    if FLAGS_should_write_output_to_file:
                         f.write("Max score for iteration 10 and game " + str(games_played) + "was: " + str(np.max(move_scores)) + "\n")
                     else:
                         print(np.max(move_scores))
                         print(np.min(move_scores))
-                if (rand_choice < .9):
+                if rand_choice < .9:
                     best_move = possible_moves[np.argmax(move_scores)]
                 elif (rand_choice < .95) and len(possible_moves) > 1:
                     best_move = possible_moves[move_scores.argsort()[1]]
@@ -198,17 +227,19 @@ if __name__ == "__main__":
                     break
                 best_move = None
                 # Write in different ways for black to play here
-                if aggressive:
+                if FLAGS_aggressive:
                     capture_moves = gameboardBlack.generate_capture_moves(possible_moves)
                     if len(capture_moves) > 0:
-                        move_scores = sesh.run(y_conv_black, feed_dict={x_black: [gameboardBlack.to_matrix(m) for m in capture_moves]})
+                        move_scores = sess.run(blackNetwork.y_hat, feed_dict={blackNetwork.x: [
+                            gameboardBlack.to_matrix(m) for m in capture_moves]})
                         best_move = capture_moves[np.argmax(move_scores)]
 
                 if best_move is None:
-                    move_scores = sesh.run(y_conv_black, feed_dict={x_black: [gameboardBlack.to_matrix(m) for m in possible_moves]})
+                    move_scores = sess.run(blackNetwork.y_hat, feed_dict={blackNetwork.x: [
+                        gameboardBlack.to_matrix(m) for m in possible_moves]})
                     # With the best move found, move on both red and black boards
                     rand_choice = random()
-                    if (rand_choice < .9):
+                    if rand_choice < .9:
                         best_move = possible_moves[np.argmax(move_scores)]
                     elif (rand_choice < .94) and len(possible_moves) > 1:
                         best_move = possible_moves[move_scores.argsort()[1]]
@@ -244,41 +275,44 @@ if __name__ == "__main__":
             else: # TIED, slightly change weights
                 # random() generates numbers on (0,1)
                 # Want to get numbers in (-0.025, 0.025)
-                red_score = random()*0.05 - 0.025
+                # red_score = random()*0.05 - 0.025
+                red_score = 0.0
             # # Reward for winning a game entirely (NOT IN RIGHT NOW)
             # if num_red == 0:
             #     red_score -= 1
             # elif num_black == 0:
             #     red_score += 1
             black_score = -red_score
-
-            discount_vec_red = np.array(
-                [math.pow(.99, p) for p in range(len(moves_made_red), 0, -1)])
-            discount_vec_black = np.array(
-                [math.pow(.99, p) for p in range(len(moves_made_black), 0, -1)])
+            discount_vec_red = np.array([math.pow(.98, p) for p in range(len(moves_made_red), 0, -1)])
+            discount_vec_black = np.array([math.pow(.98, p) for p in range(len(moves_made_black), 0, -1)])
 
             red_score_vec = np.reshape(red_score * discount_vec_red, newshape=[-1, 1])
-            black_score_vec = np.reshape(black_score * discount_vec_black,
-                                       newshape=[-1, 1])
+            black_score_vec = np.reshape(black_score * discount_vec_black, newshape=[-1, 1])
 
-            # Tensorflow (like numpy) will broadcast the single value here (the score from the game) to the entire array when doing
-            # The multiplication, so it is fine to leave it as a single value rather than a list of equivalent losses with the length of
-            # the number of moves
-            train_step_red.run(feed_dict={x_red: moves_made_red, y__red: red_score_vec})
-            train_step_black.run(feed_dict={x_black: moves_made_black, y__black: black_score_vec})
+            redNetwork.optimizer.run(feed_dict={redNetwork.x: moves_made_red,
+                                                redNetwork.y: red_score_vec})
+            blackNetwork.optimizer.run(feed_dict={blackNetwork.x: moves_made_black,
+                                                  blackNetwork.y: black_score_vec})
 
             games_played += 1
-            if test_output:
+            if FLAGS_test_output:
                 test_out += "Time to play and train on game " + str(games_played) + ": " + str(datetime.now() - start_time) + "\n"
-            if should_write_output_to_file:
+            elif FLAGS_should_write_output_to_file:
                 f.write("Time to play and train on game " + str(games_played) + ": " + str(datetime.now() - start_time) + "\n\n")
             else:
-                print("Time to play and train on game " + str(games_played) + ": " + str(datetime.now() - start_time))
+                print("Game " + str(games_played) + " had " + str(len(moves_made_red)) +
+                      " moves where red had " + str(num_red) + " pieces left" +
+                      " and took " + str(datetime.now() - start_time) + ". The average max-min move difference was: " +
+                      str(np.mean(red_move_max_min_diffs)))
 
-            if games_played % 10000 == 0:
-                saver.save(sesh, nn_saver_dir + 'aggressive_new_loss_checkpoint_' + str(games_played + max_checkpoint_val) + '.ckpt')
-            if should_write_output_to_file:
+            if games_played % 10 == 0:
+                redNetwork.saver.save(sess, red_saver_dir + "red_",
+                                      global_step=games_played + max_checkpoint_val)
+                blackNetwork.saver.save(sess, black_saver_dir + "black_",
+                                      global_step=games_played + max_checkpoint_val)
+                # saver.save(sess, nn_saver_dir + 'games_played_' + str(games_played + max_checkpoint_val) + '.ckpt')
+            if FLAGS_should_write_output_to_file:
                 f.close()
-        sesh.close()
+        sess.close()
     with open("print_out.txt", "w") as f:
         f.write(test_out)

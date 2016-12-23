@@ -7,15 +7,16 @@ import re
 
 if __name__ == "__main__":
     nn_saver_dir = './nn_checkpoints/'
+    red_saver_dir = "./red_network_checkpoints/"
     non_numeric = re.compile(r'[^\d]+')
 
     with tf.Session() as sess:
-        redNetwork = NNetwork.NNetwork("red")
+        redNetwork = NNetwork.NNetwork("red", look_ahead=True)
         blackNetwork = NNetwork.NNetwork("black")
         init_op = tf.initialize_all_variables()
         saver = tf.train.Saver()
         sess.run(init_op)
-        saver.restore(sess, nn_saver_dir + "single_layer_games_played_10800.ckpt")
+        redNetwork.saver.restore(sess, tf.train.latest_checkpoint(red_saver_dir))
 
         while True:
             user_choice = input("What would you like to do? \n"
@@ -33,7 +34,7 @@ if __name__ == "__main__":
                     if len(possible_moves) == 0:
                         break
                     if "+" in user_choice:
-                        best_move = redNetwork.minimax_look_ahead_move(sess, gameboardRed, possible_moves)
+                        best_move = redNetwork.minimax_look_ahead_move(sess, gameboardRed, possible_moves, top_n=-1)
                     else:
                         move_scores = sess.run(redNetwork.y_hat, feed_dict={
                             redNetwork.x: [gameboardRed.to_matrix(m) for m in possible_moves]})

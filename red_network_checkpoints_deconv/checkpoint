@@ -1,0 +1,6 @@
+model_checkpoint_path: "red_-800"
+all_model_checkpoint_paths: "red_-400"
+all_model_checkpoint_paths: "red_-500"
+all_model_checkpoint_paths: "red_-600"
+all_model_checkpoint_paths: "red_-700"
+all_model_checkpoint_paths: "red_-800"

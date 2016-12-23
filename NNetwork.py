@@ -6,16 +6,9 @@ from datetime import datetime
 import sys
 import re
 import os
+import tensorflow as tf
 import warnings
 warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
-
-"""
-- The neural network should take the 64x4 matrix that represents a move as input
-- Should output a score from [-1, +1]
-"""
-
-import tensorflow as tf
-
 
 # ------------------- Function Definitions -------------------
 def weight_variable(shape, name):
@@ -56,6 +49,18 @@ class ConvLayer(object):
         self.h_pool = max_pool3d_2x2(self.h_conv, ksize=pool_ksize, strides=pool_strides)
 
 
+class DeconvLayer(object):
+    def __init__(self, layer_input, weight_dim, output_shape, stride_shape, name_suffix):
+        # value = tf.convert_to_tensor(layer_input, name="value")
+        # filter = tf.convert_to_tensor(weight_dim, name="filter")
+        # print(value.get_shape())
+        # print(filter.get_shape())
+        self.W_deconv = weight_variable(shape=weight_dim, name="W_" + name_suffix)
+        self.deconv = tf.nn.conv3d_transpose(layer_input, filter=self.W_deconv, output_shape=output_shape, strides=stride_shape, padding="SAME")
+        self.b_deconv = bias_variable(shape=[weight_dim[3]])
+        self.output = self.deconv + self.b_deconv
+
+
 class FCLayer(object):
 
     def __init__(self, layer_input, weight_dimensions, name_suffix):
@@ -67,63 +72,247 @@ class FCLayer(object):
 
 class NNetwork(object):
 
-    def __init__(self, color):
-        # with tf.variable_scope(color + "_scope"):
-        self.x = tf.placeholder(tf.float32, shape=[None, 8, 8, 4])
-        self.y = tf.placeholder(tf.float32, shape=[None, 1])
-        self.x_image = tf.reshape(self.x, [-1, 4, 8, 8, 1])
+    def __init__(self, color, aggressive=False, look_ahead=False):
+        self.aggressive = aggressive
+        self.look_ahead = look_ahead
 
-        self.layer1 = ConvLayer(layer_input=self.x_image, in_channel=1, out_channel=32,
-                                weight_dims=[4, 4, 4], conv_strides=[1, 4, 2, 2, 1],
-                                pool_ksize=[1, 1, 2, 2, 1], pool_strides=[1, 1, 2, 2, 1],
-                                name_suffix="conv1_" + color)
-        self.layer2 = ConvLayer(layer_input=self.layer1.h_pool, in_channel=32, out_channel=64,
-                                weight_dims=[1, 4, 4], conv_strides=[1, 1, 2, 2, 1],
-                                pool_ksize=[1, 1, 1, 1, 1], pool_strides=[1, 1, 1, 1, 1],
-                                name_suffix="conv2_" + color)
-        self.layer2flattened = tf.reshape(self.layer2.h_pool, [-1, 64])
-        self.layer3 = FCLayer(self.layer2flattened, [64, 128], "_fc1_" + color)
-        self.layer4 = FCLayer(tf.nn.relu(self.layer3.activation), [128, 1], "_fc2_" + color)
+        with tf.variable_scope(color + "_scope"):
+            self.x = tf.placeholder(tf.float32, shape=[None, 8, 8, 4])
+            self.y = tf.placeholder(tf.float32, shape=[None, 1])
+            self.x_image = tf.reshape(self.x, [-1, 4, 8, 8, 1])
 
-        self.y_hat = self.layer4.activation
-        self.loss = tf.reduce_mean(tf.square(self.y_hat - self.y))
-        self.optimizer = tf.train.AdamOptimizer(1e-4).minimize(self.loss)
+            self.layer1 = ConvLayer(layer_input=self.x_image, in_channel=1, out_channel=32,
+                                    weight_dims=[4, 4, 4], conv_strides=[1, 4, 2, 2, 1],
+                                    pool_ksize=[1, 1, 2, 2, 1], pool_strides=[1, 1, 2, 2, 1],
+                                    name_suffix="conv1_" + color)
+            print(self.layer1.h_pool)
+            self.layer2 = ConvLayer(layer_input=self.layer1.h_pool, in_channel=32, out_channel=64,
+                                    weight_dims=[1, 4, 4], conv_strides=[1, 1, 1, 1, 1],
+                                    pool_ksize=[1, 1, 1, 1, 1], pool_strides=[1, 1, 1, 1, 1],
+                                    name_suffix="conv2_" + color)
+            print(self.layer2.h_pool)
+            self.layer2flattened = tf.reshape(self.layer2.h_pool, [-1, 256])
+            self.layer3 = FCLayer(self.layer2flattened, [256, 512], "_fc1_" + color)
+            self.layer4 = FCLayer(tf.nn.relu(self.layer3.activation), [512, 1], "_fc2_" + color)
 
-        # self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=color + "_scope"))
+            self.y_hat = self.layer4.activation
+            self.loss = tf.reduce_mean(tf.square(self.y_hat - self.y))
+            self.optimizer = tf.train.AdamOptimizer(1e-4).minimize(self.loss)
+
+        self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=color + "_scope"))
 
         print(color + " network is built.")
 
-    def minimax_look_ahead_move(self, sess, gameBoard, possible_moves):
+    def minimax_look_ahead_move(self, sess, gameBoard, possible_moves, top_n=-1):
         """
         Find the move that maximizes my current expectation of reward accounting for the fact that my opponent is going
         to jointly maximize the next move score and minimize the score I get on the next move as well. This takes the
         form of my opponent choosing a move s.t. their score - score I would choose is maximized. I seek to maximize
         my current move score - that expectation.
+        Can be given fewer
         """
-        print("Thinking...")
+
+        def get_indexed_elements(list, indices):
+            """Helper function to grab the items at the given indices from the provided list"""
+            return [list[i] for i in indices]
+
+        if top_n >= len(possible_moves):
+            top_n = len(possible_moves) - 1
         first_move_scores = sess.run(self.y_hat, feed_dict={
             self.x: [gameBoard.to_matrix(m) for m in possible_moves]})
+        if top_n > 0:
+            top_indices = np.argpartition(first_move_scores[:,0], top_n)[-top_n:]
+            possible_moves = get_indexed_elements(possible_moves, top_indices)
+            first_move_scores = get_indexed_elements(first_move_scores, top_indices)
         max_opp_score = []
         for m, score in zip(possible_moves, first_move_scores):
             # 'I' make a move and then flip the board so 'I' can see from my opponents point of view
             flipped_board = gameBoard.move_and_flip_board(m)
             # Generate all my opponent's moves and scores
             possible_opponent_moves = flipped_board.generate_moves()
-            opponent_scores = sess.run(self.y_hat, feed_dict={
-                self.x: [flipped_board.to_matrix(move) for move in possible_opponent_moves]})
+            if len(possible_moves) == 0:
+                opponent_scores = [-1.0]
+            else:
+                opponent_scores = sess.run(self.y_hat, feed_dict={
+                    self.x: [flipped_board.to_matrix(move) for move in possible_opponent_moves]})
+            if top_n > 0:
+                top_indices = np.argpartition(opponent_scores[:,0], top_n)[-top_n:]
+                possible_opponent_moves = get_indexed_elements(possible_opponent_moves, top_indices)
+                opponent_scores = get_indexed_elements(opponent_scores, top_indices)
             my_next_scores = []
             # For each (score, move) in my opponent's possibilities, append the max value I would receive
             for opp_m, opp_score in zip(possible_opponent_moves, opponent_scores):
                 my_new_board = flipped_board.move_and_flip_board(opp_m)
                 my_next_possible_moves = my_new_board.generate_moves()
-                my_next_move_scores = sess.run(self.y_hat, feed_dict={
-                    self.x: [my_new_board.to_matrix(move) for move in my_next_possible_moves]})
+                if len(my_next_possible_moves) == 0:
+                    my_next_move_scores = [-1.0]
+                else:
+                    my_next_move_scores = sess.run(self.y_hat, feed_dict={
+                        self.x: [my_new_board.to_matrix(move) for move in my_next_possible_moves]})
                 my_next_scores.append(np.max(my_next_move_scores))
             # Opponent would choose the move that maximizes his current payoff minus the payoff I would get
             max_opp_score.append(np.max([opp_s - max_s for opp_s, max_s in zip(opponent_scores, my_next_scores)]))
         # I want to maximize my score on this move minus the score my opponent would expect to achieve
         return possible_moves[np.argmax([my_score - max_opp_score
                                          for my_score, max_opp_score in zip(first_move_scores, max_opp_score)])]
+
+    def choose_move(self, sess, gameBoard, look_ahead_top_n=3, percent_random=0.05):
+        best_move = None
+
+        possible_moves = gameBoard.generate_moves()
+        if self.aggressive:
+            capture_moves = gameBoard.generate_capture_moves(
+                possible_moves)
+            if len(capture_moves) > 0:
+                move_scores = sess.run(self.y_hat, feed_dict={
+                    self.x: [gameBoard.to_matrix(m) for m in capture_moves]})
+                return capture_moves[np.argmax(move_scores)]
+        if len(possible_moves) == 0:
+            return None
+        rand_choice = random()
+        # Do exploration with random percentage
+        if rand_choice > 1 - percent_random:
+            return possible_moves[int(math.floor(random() * len(possible_moves)))]
+
+        # If look ahead is enabled, find the best move via look ahead with top_n
+        if self.look_ahead:
+            return self.minimax_look_ahead_move(sess, gameBoard, possible_moves, look_ahead_top_n)
+
+        # Otherwise,
+        move_scores = sess.run(self.y_hat, feed_dict={
+            self.x: [gameBoard.to_matrix(m) for m in possible_moves]})
+        return possible_moves[np.argmax(move_scores)]
+
+
+class DeconvNetwork(object):
+
+    def __init__(self, color, aggressive=False, look_ahead=False):
+        self.aggressive = aggressive
+        self.look_ahead = look_ahead
+
+        with tf.variable_scope(color + "_scope"):
+            self.temp_batch_size = tf.placeholder(dtype=tf.int32, shape=[])
+            self.x = tf.placeholder(tf.float32, shape=[None, 8, 8, 4])
+            self.y = tf.placeholder(tf.float32, shape=[None, 1])
+            self.x_image = tf.reshape(self.x, [-1, 4, 8, 8, 1])
+
+            self.layer1 = ConvLayer(layer_input=self.x_image, in_channel=1, out_channel=32,
+                                    weight_dims=[4, 4, 4], conv_strides=[1, 4, 2, 2, 1],
+                                    pool_ksize=[1, 1, 2, 2, 1], pool_strides=[1, 1, 2, 2, 1],
+                                    name_suffix="conv1_" + color)
+            print(self.layer1.h_conv)
+            self.layer2 = ConvLayer(layer_input=self.layer1.h_conv, in_channel=32, out_channel=64,
+                                    weight_dims=[1, 4, 4], conv_strides=[1, 1, 1, 1, 1],
+                                    pool_ksize=[1, 1, 1, 1, 1], pool_strides=[1, 1, 1, 1, 1],
+                                    name_suffix="conv2_" + color)
+            print(self.layer2.h_conv)
+            self.deconv1 = DeconvLayer(layer_input=self.layer2.h_conv,
+                                       weight_dim=[1, 4, 4, 32, 64],
+                                       output_shape=[self.temp_batch_size, 1, 4, 4, 32],
+                                       stride_shape=[1, 1, 1, 1, 1],
+                                       name_suffix="decov_1")
+            print(self.deconv1.output)
+            self.deconv2 = DeconvLayer(layer_input=tf.nn.relu(self.deconv1.output),
+                                       weight_dim=[1, 2, 2, 1, 32],
+                                       output_shape=[self.temp_batch_size, 4, 8, 8, 1],
+                                       stride_shape=[1, 4, 2, 2, 1],
+                                       name_suffix="decov_2")
+
+            self.reconstruct_loss = tf.reduce_mean(tf.square(self.deconv2.output - self.x_image))
+
+            self.layer2flattened = tf.reshape(self.layer2.h_conv, [-1, 1024])
+            self.layer3 = FCLayer(self.layer2flattened, [1024, 2048], "_fc1_" + color)
+            self.layer4 = FCLayer(tf.nn.relu(self.layer3.activation), [2048, 1], "_fc2_" + color)
+
+            self.y_hat = self.layer4.activation
+            self.loss = tf.reduce_mean(tf.square(self.y_hat - self.y)) + self.reconstruct_loss
+            self.optimizer = tf.train.AdamOptimizer(1e-4).minimize(self.loss)
+
+        self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=color + "_scope"))
+
+        print(color + " network is built.")
+
+    def minimax_look_ahead_move(self, sess, gameBoard, possible_moves, top_n=-1):
+        """
+        Find the move that maximizes my current expectation of reward accounting for the fact that my opponent is going
+        to jointly maximize the next move score and minimize the score I get on the next move as well. This takes the
+        form of my opponent choosing a move s.t. their score - score I would choose is maximized. I seek to maximize
+        my current move score - that expectation.
+        Can be given fewer
+        """
+
+        def get_indexed_elements(list, indices):
+            """Helper function to grab the items at the given indices from the provided list"""
+            return [list[i] for i in indices]
+
+        if top_n >= len(possible_moves):
+            top_n = len(possible_moves) - 1
+        first_move_scores = sess.run(self.y_hat, feed_dict={
+            self.x: [gameBoard.to_matrix(m) for m in possible_moves]})
+        if top_n > 0:
+            top_indices = np.argpartition(first_move_scores[:,0], top_n)[-top_n:]
+            possible_moves = get_indexed_elements(possible_moves, top_indices)
+            first_move_scores = get_indexed_elements(first_move_scores, top_indices)
+        max_opp_score = []
+        for m, score in zip(possible_moves, first_move_scores):
+            # 'I' make a move and then flip the board so 'I' can see from my opponents point of view
+            flipped_board = gameBoard.move_and_flip_board(m)
+            # Generate all my opponent's moves and scores
+            possible_opponent_moves = flipped_board.generate_moves()
+            if len(possible_moves) == 0:
+                opponent_scores = [-1.0]
+            else:
+                opponent_scores = sess.run(self.y_hat, feed_dict={
+                    self.x: [flipped_board.to_matrix(move) for move in possible_opponent_moves]})
+            if top_n > 0:
+                top_indices = np.argpartition(opponent_scores[:,0], top_n)[-top_n:]
+                possible_opponent_moves = get_indexed_elements(possible_opponent_moves, top_indices)
+                opponent_scores = get_indexed_elements(opponent_scores, top_indices)
+            my_next_scores = []
+            # For each (score, move) in my opponent's possibilities, append the max value I would receive
+            for opp_m, opp_score in zip(possible_opponent_moves, opponent_scores):
+                my_new_board = flipped_board.move_and_flip_board(opp_m)
+                my_next_possible_moves = my_new_board.generate_moves()
+                if len(my_next_possible_moves) == 0:
+                    my_next_move_scores = [-1.0]
+                else:
+                    my_next_move_scores = sess.run(self.y_hat, feed_dict={
+                        self.x: [my_new_board.to_matrix(move) for move in my_next_possible_moves]})
+                my_next_scores.append(np.max(my_next_move_scores))
+            # Opponent would choose the move that maximizes his current payoff minus the payoff I would get
+            max_opp_score.append(np.max([opp_s - max_s for opp_s, max_s in zip(opponent_scores, my_next_scores)]))
+        # I want to maximize my score on this move minus the score my opponent would expect to achieve
+        return possible_moves[np.argmax([my_score - max_opp_score
+                                         for my_score, max_opp_score in zip(first_move_scores, max_opp_score)])]
+
+    def choose_move(self, sess, gameBoard, look_ahead_top_n=3, percent_random=0.05):
+        best_move = None
+
+        possible_moves = gameBoard.generate_moves()
+        if self.aggressive:
+            capture_moves = gameBoard.generate_capture_moves(
+                possible_moves)
+            if len(capture_moves) > 0:
+                move_scores = sess.run(self.y_hat, feed_dict={
+                    self.x: [gameBoard.to_matrix(m) for m in capture_moves]})
+                return capture_moves[np.argmax(move_scores)]
+        if len(possible_moves) == 0:
+            return None
+        rand_choice = random()
+        # Do exploration with random percentage
+        if rand_choice > 1.0 - percent_random:
+            return possible_moves[int(math.floor(random() * len(possible_moves)))]
+
+        # If look ahead is enabled, find the best move via look ahead with top_n
+        if self.look_ahead:
+            return self.minimax_look_ahead_move(sess, gameBoard, possible_moves, look_ahead_top_n)
+
+        # Otherwise,
+        move_scores = sess.run(self.y_hat, feed_dict={
+            self.x: [gameBoard.to_matrix(m) for m in possible_moves]})
+        return possible_moves[np.argmax(move_scores)]
+
+
 
 # --------------- Running the network ---------------
 
@@ -135,24 +324,23 @@ class NNetwork(object):
 # Where x: is the input game boards and y is the labels for each
 
 if __name__ == "__main__":
-    red_saver_dir = "./red_network_checkpoints/"
-    black_saver_dir = "./black_network_checkpoints/"
+    red_saver_dir = "./red_network_checkpoints_deconv/"
+    black_saver_dir = "./black_network_checkpoints_deconv/"
 
-    FLAGS_should_restore_red = True
-    FLAGS_should_restore_black = True
-    FLAGS_should_write_output_to_file = False
-    FLAGS_test_output = False
+    FLAGS_should_restore_red = False
+    FLAGS_should_restore_black = False
 
-    # Constants for game playing
     FLAGS_aggressive = True
+    FLAGS_look_ahead = False
 
-    test_out = ""
     max_checkpoint_val = 0
 
     with tf.Session() as sess:
 
-        redNetwork = NNetwork("red")
-        blackNetwork = NNetwork("black")
+        # redNetwork = NNetwork("red", look_ahead=FLAGS_look_ahead)
+        # blackNetwork = NNetwork("black", aggressive=FLAGS_aggressive)
+        redNetwork = DeconvNetwork("red")
+        blackNetwork = DeconvNetwork("black", aggressive=FLAGS_aggressive)
 
         init_op = tf.initialize_all_variables()
 
@@ -167,7 +355,7 @@ if __name__ == "__main__":
             max_checkpoint_val = max(checkpoint_vals)
             redNetwork.saver.restore(sess, tf.train.latest_checkpoint(red_saver_dir))
             print("Red model restored")
-        if FLAGS_should_restore_red:
+        if FLAGS_should_restore_black:
             checkpoint_vals = []
             for root, dirs, files in os.walk(black_saver_dir):
                 for f in files:
@@ -179,8 +367,6 @@ if __name__ == "__main__":
 
         games_played = 0
         while games_played < 50001:
-            if FLAGS_should_write_output_to_file:
-                f = open('print_out.txt', 'w')
             start_time = datetime.now()
             # ----- Play a game of Petteia -----
             # Generate gameboards, one for each side
@@ -189,77 +375,29 @@ if __name__ == "__main__":
             gameboardRed = gb.GameBoard()
             gameboardBlack = gb.GameBoard()
             red_move_max_min_diffs = []
-            while len(gameboardRed.pos) > 0 and len(moves_made_red) < 100:
+            while len(gameboardRed.pos) > 0 and len(gameboardBlack.pos) > 0 and len(moves_made_red) < 100:
+
                 # Make a move for red
-                possible_moves = gameboardRed.generate_moves()
-                if len(possible_moves) == 0:
+                best_move = redNetwork.choose_move(sess, gameboardRed, 5, 0.05)
+                if best_move is None:
                     break
-                before_pass = datetime.now()
-                move_scores = sess.run(redNetwork.y_hat, feed_dict={redNetwork.x: [gameboardRed.to_matrix(m) for m in possible_moves]})
-                red_move_max_min_diffs.append(np.max(move_scores) - np.min(move_scores))
-                if FLAGS_should_write_output_to_file:
-                    if iter == 0:
-                        f.write("Time to pass all moves through network: " + str(datetime.now() - before_pass) + "\n")
-                # With the best move found, move on both red and black boards
-                rand_choice = random()
-                if len(moves_made_red) == 10:
-                    if FLAGS_should_write_output_to_file:
-                        f.write("Max score for iteration 10 and game " + str(games_played) + "was: " + str(np.max(move_scores)) + "\n")
-                    else:
-                        print(np.max(move_scores))
-                        print(np.min(move_scores))
-                if rand_choice < .9:
-                    best_move = possible_moves[np.argmax(move_scores)]
-                elif (rand_choice < .95) and len(possible_moves) > 1:
-                    best_move = possible_moves[move_scores.argsort()[1]]
-                elif (rand_choice < .98) and len(possible_moves) > 2:
-                    best_move = possible_moves[move_scores.argsort()[2]]
-                else:
-                    best_move = possible_moves[int(math.floor(random() * len(move_scores)))]
                 moves_made_red.append(gameboardRed.to_matrix(best_move))
                 gameboardRed.make_move(best_move)
                 move_for_black = ((7 - best_move[0][0], 7 - best_move[0][1]), (7 - best_move[1][0], 7 - best_move[1][1]))
                 gameboardBlack.make_move(move_for_black)
 
                 # Make a move for black
-                possible_moves = gameboardBlack.generate_moves()
-                if len(possible_moves) == 0:
-                    break
-                best_move = None
-                # Write in different ways for black to play here
-                if FLAGS_aggressive:
-                    capture_moves = gameboardBlack.generate_capture_moves(possible_moves)
-                    if len(capture_moves) > 0:
-                        move_scores = sess.run(blackNetwork.y_hat, feed_dict={blackNetwork.x: [
-                            gameboardBlack.to_matrix(m) for m in capture_moves]})
-                        best_move = capture_moves[np.argmax(move_scores)]
-
+                best_move = blackNetwork.choose_move(sess, gameboardBlack, percent_random=0.05)
                 if best_move is None:
-                    move_scores = sess.run(blackNetwork.y_hat, feed_dict={blackNetwork.x: [
-                        gameboardBlack.to_matrix(m) for m in possible_moves]})
-                    # With the best move found, move on both red and black boards
-                    rand_choice = random()
-                    if rand_choice < .9:
-                        best_move = possible_moves[np.argmax(move_scores)]
-                    elif (rand_choice < .94) and len(possible_moves) > 1:
-                        best_move = possible_moves[move_scores.argsort()[1]]
-                    elif (rand_choice < .98) and len(possible_moves) > 2:
-                        best_move = possible_moves[move_scores.argsort()[2]]
-                    else:
-                        best_move = possible_moves[int(math.floor(random() * len(move_scores)))]
+                    break
                 moves_made_black.append(gameboardBlack.to_matrix(best_move))
                 gameboardBlack.make_move(best_move)
                 move_for_red = ((7 - best_move[0][0], 7 - best_move[0][1]), (7 - best_move[1][0], 7 - best_move[1][1]))
                 gameboardRed.make_move(move_for_red)
 
             # Print out for debugging
-            # if should_write_output_to_file:
-            #     if games_played % 10 == 0:
-            #         f.write("RED SIDE BOARD: \n")
-            #         f.write(gameboardRed.print_board(should_return=True))
-            # else:
-            #     print("RED SIDE BOARD")
-            #     gameboardRed.print_board()
+            #   print("RED SIDE BOARD")
+            #   gameboardRed.print_board()
 
             # Evaluate the board,
             # Winning outright should be worth a lot
@@ -272,12 +410,12 @@ if __name__ == "__main__":
                 red_score = math.pow((num_red - num_black), 1.5)/22.7
             elif num_black > num_red:
                 red_score = -math.pow((num_black - num_red), 1.5)/22.7
-            else: # TIED, slightly change weights
+            else: # TIED, slightly change weights or don't change at all
                 # random() generates numbers on (0,1)
                 # Want to get numbers in (-0.025, 0.025)
                 # red_score = random()*0.05 - 0.025
                 red_score = 0.0
-            # # Reward for winning a game entirely (NOT IN RIGHT NOW)
+            # # Reward for winning a game entirely (Should this be in?)
             # if num_red == 0:
             #     red_score -= 1
             # elif num_black == 0:
@@ -289,30 +427,22 @@ if __name__ == "__main__":
             red_score_vec = np.reshape(red_score * discount_vec_red, newshape=[-1, 1])
             black_score_vec = np.reshape(black_score * discount_vec_black, newshape=[-1, 1])
 
-            redNetwork.optimizer.run(feed_dict={redNetwork.x: moves_made_red,
+            redNetwork.optimizer.run(feed_dict={redNetwork.temp_batch_size: len(moves_made_red),
+                                                redNetwork.x: moves_made_red,
                                                 redNetwork.y: red_score_vec})
-            blackNetwork.optimizer.run(feed_dict={blackNetwork.x: moves_made_black,
+            blackNetwork.optimizer.run(feed_dict={blackNetwork.temp_batch_size: len(moves_made_black),
+                                                  blackNetwork.x: moves_made_black,
                                                   blackNetwork.y: black_score_vec})
 
             games_played += 1
-            if FLAGS_test_output:
-                test_out += "Time to play and train on game " + str(games_played) + ": " + str(datetime.now() - start_time) + "\n"
-            elif FLAGS_should_write_output_to_file:
-                f.write("Time to play and train on game " + str(games_played) + ": " + str(datetime.now() - start_time) + "\n\n")
-            else:
-                print("Game " + str(games_played) + " had " + str(len(moves_made_red)) +
-                      " moves where red had " + str(num_red) + " pieces left" +
-                      " and took " + str(datetime.now() - start_time) + ". The average max-min move difference was: " +
-                      str(np.mean(red_move_max_min_diffs)))
+            print("Game " + str(games_played) + " had " + str(len(moves_made_red)) +
+                  " moves where red had " + str(num_red) + " pieces left" +
+                  " and took " + str(datetime.now() - start_time))
 
-            if games_played % 10 == 0:
+            if games_played % 100 == 0:
                 redNetwork.saver.save(sess, red_saver_dir + "red_",
                                       global_step=games_played + max_checkpoint_val)
                 blackNetwork.saver.save(sess, black_saver_dir + "black_",
                                       global_step=games_played + max_checkpoint_val)
                 # saver.save(sess, nn_saver_dir + 'games_played_' + str(games_played + max_checkpoint_val) + '.ckpt')
-            if FLAGS_should_write_output_to_file:
-                f.close()
         sess.close()
-    with open("print_out.txt", "w") as f:
-        f.write(test_out)

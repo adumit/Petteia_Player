@@ -1,8 +1,10 @@
 .DS_Store
 .idea
 single_layer_checkpoints/
-split_network_checkpoints/
 black_network_checkpoints/
 red_network_checkpoints/
 red_network_checkpoints_deconv
 black_network_checkpoints_deconv
+Red_Scores.txt
+Run_Data/
+checkpoints/

@@ -8,6 +8,7 @@ import re
 import os
 import tensorflow as tf
 import warnings
+import pickle
 warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
 
 # ------------------- Function Definitions -------------------
@@ -77,6 +78,7 @@ class NNetwork(object):
         self.look_ahead = look_ahead
 
         with tf.variable_scope(color + "_scope"):
+            self.temp_batch_size = tf.placeholder(dtype=tf.int32, shape=[]) # Included to be alike Deconv net
             self.x = tf.placeholder(tf.float32, shape=[None, 8, 8, 4])
             self.y = tf.placeholder(tf.float32, shape=[None, 1])
             self.x_image = tf.reshape(self.x, [-1, 4, 8, 8, 1])
@@ -85,12 +87,12 @@ class NNetwork(object):
                                     weight_dims=[4, 4, 4], conv_strides=[1, 4, 2, 2, 1],
                                     pool_ksize=[1, 1, 2, 2, 1], pool_strides=[1, 1, 2, 2, 1],
                                     name_suffix="conv1_" + color)
-            print(self.layer1.h_pool)
+
             self.layer2 = ConvLayer(layer_input=self.layer1.h_pool, in_channel=32, out_channel=64,
                                     weight_dims=[1, 4, 4], conv_strides=[1, 1, 1, 1, 1],
                                     pool_ksize=[1, 1, 1, 1, 1], pool_strides=[1, 1, 1, 1, 1],
                                     name_suffix="conv2_" + color)
-            print(self.layer2.h_pool)
+
             self.layer2flattened = tf.reshape(self.layer2.h_pool, [-1, 256])
             self.layer3 = FCLayer(self.layer2flattened, [256, 512], "_fc1_" + color)
             self.layer4 = FCLayer(tf.nn.relu(self.layer3.activation), [512, 1], "_fc2_" + color)
@@ -200,18 +202,17 @@ class DeconvNetwork(object):
                                     weight_dims=[4, 4, 4], conv_strides=[1, 4, 2, 2, 1],
                                     pool_ksize=[1, 1, 2, 2, 1], pool_strides=[1, 1, 2, 2, 1],
                                     name_suffix="conv1_" + color)
-            print(self.layer1.h_conv)
+
             self.layer2 = ConvLayer(layer_input=self.layer1.h_conv, in_channel=32, out_channel=64,
                                     weight_dims=[1, 4, 4], conv_strides=[1, 1, 1, 1, 1],
                                     pool_ksize=[1, 1, 1, 1, 1], pool_strides=[1, 1, 1, 1, 1],
                                     name_suffix="conv2_" + color)
-            print(self.layer2.h_conv)
+
             self.deconv1 = DeconvLayer(layer_input=self.layer2.h_conv,
                                        weight_dim=[1, 4, 4, 32, 64],
                                        output_shape=[self.temp_batch_size, 1, 4, 4, 32],
                                        stride_shape=[1, 1, 1, 1, 1],
                                        name_suffix="decov_1")
-            print(self.deconv1.output)
             self.deconv2 = DeconvLayer(layer_input=tf.nn.relu(self.deconv1.output),
                                        weight_dim=[1, 2, 2, 1, 32],
                                        output_shape=[self.temp_batch_size, 4, 8, 8, 1],
@@ -225,7 +226,8 @@ class DeconvNetwork(object):
             self.layer4 = FCLayer(tf.nn.relu(self.layer3.activation), [2048, 1], "_fc2_" + color)
 
             self.y_hat = self.layer4.activation
-            self.loss = tf.reduce_mean(tf.square(self.y_hat - self.y)) + self.reconstruct_loss
+            self.policy_loss = tf.reduce_mean(tf.square(self.y_hat - self.y))
+            self.loss = self.policy_loss + self.reconstruct_loss
             self.optimizer = tf.train.AdamOptimizer(1e-4).minimize(self.loss)
 
         self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=color + "_scope"))
@@ -324,23 +326,65 @@ class DeconvNetwork(object):
 # Where x: is the input game boards and y is the labels for each
 
 if __name__ == "__main__":
-    red_saver_dir = "./red_network_checkpoints_deconv/"
-    black_saver_dir = "./black_network_checkpoints_deconv/"
+    run_name = input("Name of run: ")
+    os.makedirs("Run_Data/" + run_name + "/", exist_ok=True)
 
-    FLAGS_should_restore_red = False
-    FLAGS_should_restore_black = False
 
-    FLAGS_aggressive = True
-    FLAGS_look_ahead = False
+    red_saver_dir = "./checkpoints/" + input("Directory of red network in checkpoints: ") + "/"
+    black_saver_dir = "./checkpoints/" + input("Directory of black network in checkpoints: ") + "/"
+    os.makedirs(red_saver_dir, exist_ok=True)
+    os.makedirs(black_saver_dir, exist_ok=True)
 
-    max_checkpoint_val = 0
+    should_restore_red = input("Restore red network?")
+    should_restore_black = input("Restore black network?")
+
+    red_look_ahead = input("Should red use look ahead?")
+    black_aggressive = input("Should black be aggressive?")
+
+    if should_restore_red.lower() in ["y", "t", "true", "yes"]:
+        FLAGS_should_restore_red = True
+    else:
+        FLAGS_should_restore_red = False
+    if should_restore_black.lower() in ["y", "t", "true", "yes"]:
+        FLAGS_should_restore_black = True
+    else:
+        FLAGS_should_restore_black = False
+
+    if black_aggressive.lower() in ["y", "t", "true", "yes"]:
+        FLAGS_aggressive = True
+    else:
+        FLAGS_aggressive = False
+    if red_look_ahead.lower() in ["y", "t", "true", "yes"]:
+        FLAGS_look_ahead = True
+    else:
+        FLAGS_look_ahead = False
+
+    print("Run settings: ")
+    print("Red is being restored: " + str(FLAGS_should_restore_red))
+    print("Black is being restored: " + str(FLAGS_should_restore_black))
+    print("Red is using look ahead: " + str(FLAGS_look_ahead))
+    print("Black is being aggressive: " + str(FLAGS_aggressive))
+
+    max_checkpoint_val_red = 0
+    max_checkpoint_val_black = 0
 
     with tf.Session() as sess:
 
         # redNetwork = NNetwork("red", look_ahead=FLAGS_look_ahead)
         # blackNetwork = NNetwork("black", aggressive=FLAGS_aggressive)
-        redNetwork = DeconvNetwork("red")
-        blackNetwork = DeconvNetwork("black", aggressive=FLAGS_aggressive)
+
+        if "deconv" in red_saver_dir.lower():
+            print("Red is deconv")
+            redNetwork = DeconvNetwork("red", look_ahead=FLAGS_look_ahead)
+        else:
+            print("Red is regular")
+            redNetwork = NNetwork("red", look_ahead=FLAGS_look_ahead)
+        if "deconv" in black_saver_dir.lower():
+            print("Black is deconv")
+            blackNetwork = DeconvNetwork("black", aggressive=FLAGS_aggressive)
+        else:
+            print("Black is regular")
+            blackNetwork = NNetwork("black", aggressive=FLAGS_aggressive)
 
         init_op = tf.initialize_all_variables()
 
@@ -352,7 +396,7 @@ if __name__ == "__main__":
                 for f in files:
                     checkpoint_vals.append(re.search(r'\d+', f))
             checkpoint_vals = [int(x.group()) for x in checkpoint_vals if x]
-            max_checkpoint_val = max(checkpoint_vals)
+            max_checkpoint_val_red = max(checkpoint_vals)
             redNetwork.saver.restore(sess, tf.train.latest_checkpoint(red_saver_dir))
             print("Red model restored")
         if FLAGS_should_restore_black:
@@ -361,12 +405,14 @@ if __name__ == "__main__":
                 for f in files:
                     checkpoint_vals.append(re.search(r'\d+', f))
             checkpoint_vals = [int(x.group()) for x in checkpoint_vals if x]
-            max_checkpoint_val = max(checkpoint_vals)
+            max_checkpoint_val_black = max(checkpoint_vals)
             blackNetwork.saver.restore(sess, tf.train.latest_checkpoint(black_saver_dir))
             print("Black model restored")
 
-        games_played = 0
-        while games_played < 50001:
+        red_scores = []
+        games_played_red = max_checkpoint_val_red
+        games_played_black = max_checkpoint_val_black
+        while games_played_red < 50001:
             start_time = datetime.now()
             # ----- Play a game of Petteia -----
             # Generate gameboards, one for each side
@@ -433,16 +479,19 @@ if __name__ == "__main__":
             blackNetwork.optimizer.run(feed_dict={blackNetwork.temp_batch_size: len(moves_made_black),
                                                   blackNetwork.x: moves_made_black,
                                                   blackNetwork.y: black_score_vec})
-
-            games_played += 1
-            print("Game " + str(games_played) + " had " + str(len(moves_made_red)) +
+            red_scores.append(red_score)
+            games_played_red += 1
+            games_played_black += 1
+            print("Game " + str(games_played_red) + " had " + str(len(moves_made_red)) +
                   " moves where red had " + str(num_red) + " pieces left" +
                   " and took " + str(datetime.now() - start_time))
 
-            if games_played % 100 == 0:
+            if games_played_red % 100 == 0:
                 redNetwork.saver.save(sess, red_saver_dir + "red_",
-                                      global_step=games_played + max_checkpoint_val)
+                                      global_step=games_played_red)
                 blackNetwork.saver.save(sess, black_saver_dir + "black_",
-                                      global_step=games_played + max_checkpoint_val)
-                # saver.save(sess, nn_saver_dir + 'games_played_' + str(games_played + max_checkpoint_val) + '.ckpt')
+                                      global_step=games_played_black)
+                with open("Run_Data/" + run_name + "/" + "_" + str(games_played_red - 100) + "-" + str(games_played_red) + ".pickle", "ab+") as f:
+                    pickle.dump(obj=red_scores, file=f)
+                red_scores = []
         sess.close()

@@ -16,7 +16,7 @@ if __name__ == "__main__":
         init_op = tf.initialize_all_variables()
         saver = tf.train.Saver()
         sess.run(init_op)
-        redNetwork.saver.restore(sess, tf.train.latest_checkpoint(red_saver_dir))
+        # redNetwork.saver.restore(sess, tf.train.latest_checkpoint(red_saver_dir))
 
         while True:
             user_choice = input("What would you like to do? \n"

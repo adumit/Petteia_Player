@@ -8,3 +8,5 @@ black_network_checkpoints_deconv
 Red_Scores.txt
 Run_Data/
 checkpoints/
+nn_checkpoints
+__pycache__/

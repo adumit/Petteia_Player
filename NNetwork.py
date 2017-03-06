@@ -1,6 +1,7 @@
 import GameBoard as gb
 import numpy as np
 import math
+import argparse
 from random import random
 from datetime import datetime
 import sys
@@ -47,6 +48,7 @@ class ConvLayer(object):
                                       name="W" + name_suffix)
         self.b_conv = bias_variable([out_channel])
         self.h_conv = tf.nn.relu(conv3d(self.input, self.W_conv, strides=conv_strides) + self.b_conv)
+        # TODO: Experiment with max and average pooling
         self.h_pool = max_pool3d_2x2(self.h_conv, ksize=pool_ksize, strides=pool_strides)
 
 
@@ -87,7 +89,6 @@ class NNetwork(object):
                                     weight_dims=[4, 4, 4], conv_strides=[1, 4, 2, 2, 1],
                                     pool_ksize=[1, 1, 2, 2, 1], pool_strides=[1, 1, 2, 2, 1],
                                     name_suffix="conv1_" + color)
-
             self.layer2 = ConvLayer(layer_input=self.layer1.h_pool, in_channel=32, out_channel=64,
                                     weight_dims=[1, 4, 4], conv_strides=[1, 1, 1, 1, 1],
                                     pool_ksize=[1, 1, 1, 1, 1], pool_strides=[1, 1, 1, 1, 1],
@@ -325,41 +326,46 @@ class DeconvNetwork(object):
 # train_step.run(feed_dict={x: INPUTS, y_: LABELS})
 # Where x: is the input game boards and y is the labels for each
 
-if __name__ == "__main__":
-    run_name = input("Name of run: ")
-    os.makedirs("Run_Data/" + run_name + "/", exist_ok=True)
+def setup_training(opt):
+    # run_name = input("Name of run: ")
+    os.makedirs("Run_Data/" + opt.run_name + "/", exist_ok=True)
 
+    # red_saver_dir = "./checkpoints/" + input("Directory of red network in checkpoints: ") + "/"
+    # black_saver_dir = "./checkpoints/" + input("Directory of black network in checkpoints: ") + "/"
+    os.makedirs(opt.red_dir, exist_ok=True)
+    os.makedirs(opt.black_dir, exist_ok=True)
 
-    red_saver_dir = "./checkpoints/" + input("Directory of red network in checkpoints: ") + "/"
-    black_saver_dir = "./checkpoints/" + input("Directory of black network in checkpoints: ") + "/"
-    os.makedirs(red_saver_dir, exist_ok=True)
-    os.makedirs(black_saver_dir, exist_ok=True)
+    # should_restore_red = input("Restore red network?")
+    # should_restore_black = input("Restore black network?")
+    #
+    # red_look_ahead = input("Should red use look ahead?")
+    # black_aggressive = input("Should black be aggressive?")
 
-    should_restore_red = input("Restore red network?")
-    should_restore_black = input("Restore black network?")
+    # if should_restore_red.lower() in ["y", "t", "true", "yes"]:
+    #     FLAGS_should_restore_red = True
+    # else:
+    #     FLAGS_should_restore_red = False
+    # if should_restore_black.lower() in ["y", "t", "true", "yes"]:
+    #     FLAGS_should_restore_black = True
+    # else:
+    #     FLAGS_should_restore_black = False
 
-    red_look_ahead = input("Should red use look ahead?")
-    black_aggressive = input("Should black be aggressive?")
+    FLAGS_should_restore_red = bool(opt.restore_red)
+    FLAGS_should_restore_black = bool(opt.restore_black)
 
-    if should_restore_red.lower() in ["y", "t", "true", "yes"]:
-        FLAGS_should_restore_red = True
-    else:
-        FLAGS_should_restore_red = False
-    if should_restore_black.lower() in ["y", "t", "true", "yes"]:
-        FLAGS_should_restore_black = True
-    else:
-        FLAGS_should_restore_black = False
-
-    if black_aggressive.lower() in ["y", "t", "true", "yes"]:
-        FLAGS_aggressive = True
-    else:
-        FLAGS_aggressive = False
-    if red_look_ahead.lower() in ["y", "t", "true", "yes"]:
-        FLAGS_look_ahead = True
-    else:
-        FLAGS_look_ahead = False
+    FLAGS_aggressive = bool(opt.black_agg)
+    FLAGS_look_ahead = bool(opt.red_look_ahead)
+    # if black_aggressive.lower() in ["y", "t", "true", "yes"]:
+    #     FLAGS_aggressive = True
+    # else:
+    #     FLAGS_aggressive = False
+    # if red_look_ahead.lower() in ["y", "t", "true", "yes"]:
+    #     FLAGS_look_ahead = True
+    # else:
+    #     FLAGS_look_ahead = False
 
     print("Run settings: ")
+    print("Run name: " + str(opt.run_name))
     print("Red is being restored: " + str(FLAGS_should_restore_red))
     print("Black is being restored: " + str(FLAGS_should_restore_black))
     print("Red is using look ahead: " + str(FLAGS_look_ahead))
@@ -369,17 +375,13 @@ if __name__ == "__main__":
     max_checkpoint_val_black = 0
 
     with tf.Session() as sess:
-
-        # redNetwork = NNetwork("red", look_ahead=FLAGS_look_ahead)
-        # blackNetwork = NNetwork("black", aggressive=FLAGS_aggressive)
-
-        if "deconv" in red_saver_dir.lower():
+        if bool(opt.black_deconv):
             print("Red is deconv")
             redNetwork = DeconvNetwork("red", look_ahead=FLAGS_look_ahead)
         else:
             print("Red is regular")
             redNetwork = NNetwork("red", look_ahead=FLAGS_look_ahead)
-        if "deconv" in black_saver_dir.lower():
+        if bool(opt.black_deconv):
             print("Black is deconv")
             blackNetwork = DeconvNetwork("black", aggressive=FLAGS_aggressive)
         else:
@@ -412,7 +414,7 @@ if __name__ == "__main__":
         red_scores = []
         games_played_red = max_checkpoint_val_red
         games_played_black = max_checkpoint_val_black
-        while games_played_red < 50001:
+        while games_played_red < opt.num_games:
             start_time = datetime.now()
             # ----- Play a game of Petteia -----
             # Generate gameboards, one for each side
@@ -421,24 +423,29 @@ if __name__ == "__main__":
             gameboardRed = gb.GameBoard()
             gameboardBlack = gb.GameBoard()
             red_move_max_min_diffs = []
-            while len(gameboardRed.pos) > 0 and len(gameboardBlack.pos) > 0 and len(moves_made_red) < 100:
+            while len(gameboardRed.pos) > 0 and len(gameboardBlack.pos) > 0 and len(
+                    moves_made_red) < 100:
 
                 # Make a move for red
-                best_move = redNetwork.choose_move(sess, gameboardRed, 5, 0.05)
+                best_move = redNetwork.choose_move(sess, gameboardRed, 5,
+                                                   percent_random=opt.exploration_param)
                 if best_move is None:
                     break
                 moves_made_red.append(gameboardRed.to_matrix(best_move))
                 gameboardRed.make_move(best_move)
-                move_for_black = ((7 - best_move[0][0], 7 - best_move[0][1]), (7 - best_move[1][0], 7 - best_move[1][1]))
+                move_for_black = ((7 - best_move[0][0], 7 - best_move[0][1]),
+                                  (7 - best_move[1][0], 7 - best_move[1][1]))
                 gameboardBlack.make_move(move_for_black)
 
                 # Make a move for black
-                best_move = blackNetwork.choose_move(sess, gameboardBlack, percent_random=0.05)
+                best_move = blackNetwork.choose_move(sess, gameboardBlack,
+                                                     percent_random=opt.exploration_param)
                 if best_move is None:
                     break
                 moves_made_black.append(gameboardBlack.to_matrix(best_move))
                 gameboardBlack.make_move(best_move)
-                move_for_red = ((7 - best_move[0][0], 7 - best_move[0][1]), (7 - best_move[1][0], 7 - best_move[1][1]))
+                move_for_red = ((7 - best_move[0][0], 7 - best_move[0][1]),
+                                (7 - best_move[1][0], 7 - best_move[1][1]))
                 gameboardRed.make_move(move_for_red)
 
             # Print out for debugging
@@ -453,22 +460,24 @@ if __name__ == "__main__":
             num_red = len([x for x in gameboardRed.pos if x])
             num_black = len([x for x in gameboardRed.neg if x])
             if num_red > num_black:
-                red_score = math.pow((num_red - num_black), 1.5)/22.7
+                red_score = math.pow((num_red - num_black), 1.5) / 22.7
             elif num_black > num_red:
-                red_score = -math.pow((num_black - num_red), 1.5)/22.7
-            else: # TIED, slightly change weights or don't change at all
+                red_score = -math.pow((num_black - num_red), 1.5) / 22.7
+            else:  # TIED, slightly change weights or don't change at all
                 # random() generates numbers on (0,1)
                 # Want to get numbers in (-0.025, 0.025)
                 # red_score = random()*0.05 - 0.025
                 red_score = 0.0
-            # # Reward for winning a game entirely (Should this be in?)
+            # # Reward for winning a game entirely (Test if this should be in?)
             # if num_red == 0:
             #     red_score -= 1
             # elif num_black == 0:
             #     red_score += 1
             black_score = -red_score
-            discount_vec_red = np.array([math.pow(.98, p) for p in range(len(moves_made_red), 0, -1)])
-            discount_vec_black = np.array([math.pow(.98, p) for p in range(len(moves_made_black), 0, -1)])
+            discount_vec_red = np.array(
+                [math.pow(.98, p) for p in range(len(moves_made_red), 0, -1)])
+            discount_vec_black = np.array(
+                [math.pow(.98, p) for p in range(len(moves_made_black), 0, -1)])
 
             red_score_vec = np.reshape(red_score * discount_vec_red, newshape=[-1, 1])
             black_score_vec = np.reshape(black_score * discount_vec_black, newshape=[-1, 1])
@@ -476,9 +485,10 @@ if __name__ == "__main__":
             redNetwork.optimizer.run(feed_dict={redNetwork.temp_batch_size: len(moves_made_red),
                                                 redNetwork.x: moves_made_red,
                                                 redNetwork.y: red_score_vec})
-            blackNetwork.optimizer.run(feed_dict={blackNetwork.temp_batch_size: len(moves_made_black),
-                                                  blackNetwork.x: moves_made_black,
-                                                  blackNetwork.y: black_score_vec})
+            blackNetwork.optimizer.run(
+                feed_dict={blackNetwork.temp_batch_size: len(moves_made_black),
+                           blackNetwork.x: moves_made_black,
+                           blackNetwork.y: black_score_vec})
             red_scores.append(red_score)
             games_played_red += 1
             games_played_black += 1
@@ -490,8 +500,46 @@ if __name__ == "__main__":
                 redNetwork.saver.save(sess, red_saver_dir + "red_",
                                       global_step=games_played_red)
                 blackNetwork.saver.save(sess, black_saver_dir + "black_",
-                                      global_step=games_played_black)
-                with open("Run_Data/" + run_name + "/" + "_" + str(games_played_red - 100) + "-" + str(games_played_red) + ".pickle", "ab+") as f:
+                                        global_step=games_played_black)
+                with open("Run_Data/" + run_name + "/" + "_" + str(
+                                games_played_red - 100) + "-" + str(games_played_red) + ".pickle",
+                          "ab+") as f:
                     pickle.dump(obj=red_scores, file=f)
                 red_scores = []
         sess.close()
+
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description='Train a Petteia Playing Network')
+
+    # Run parameters
+    parser.add_argument('--run_name', type=str, default='test_run', help='Name of run')
+    parser.add_argument('--red_dir', type=str, default='./checkpoints/test_red/',
+                        help='Checkpoint directory for red network')
+    parser.add_argument('--black_dir', type=str, default='./checkpoints/test_black/',
+                        help='Checkpoint directory for black network')
+    parser.add_argument('--restore_red', type=int, default=0,
+                        help='Should restore the red network from checkpoint directory?')
+    parser.add_argument('--restore_black', type=int, default=0,
+                        help='Should restore the black network from checkpoint directory?')
+    parser.add_argument('--red_look_ahead', type=int, default=0,
+                        help='Should the red network use look ahead?')
+    parser.add_argument('--black_agg', type=int, default=1,
+                        help='Should the black network be aggressive?')
+    parser.add_argument('--red_deconv', type=int, default=0,
+                        help='Should the red network use deconvolutions?')
+    parser.add_argument('--black_deconv', type=int, default=0,
+                        help='Should the black network use deconvolutions?')
+
+    # Training params
+    parser.add_argument('--exploration_param', type=float, default=0.05,
+                        help='Percent of moves that should be random')
+    parser.add_argument('--num_games', type=int, default=1000,
+                        help='How many games should the networks play?')
+
+    params = parser.parse_args()
+
+    setup_training(params)
+
